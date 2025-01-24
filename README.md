@@ -1,12 +1,12 @@
-# Parsel
+# Parselly
 
-Parsel is a module providing a simple way to parse and extract data from a css selector.
+Parselly is a module providing a simple way to parse and extract data from a css selector.
 
 ## Installation
 
 Add this line to your application's Gemfile:
 ```ruby
-gem 'parsel'
+gem 'parselly'
 ```
 
 And then execute:
@@ -16,7 +16,7 @@ bundle install
 
 Or install it yourself as:
 ```bash
-gem install parsel
+gem install parselly
 ```
 
 ## Development
@@ -27,4 +27,4 @@ To install this gem onto your local machine, run `bundle exec rake install`. To 
 
 ## Contributing
 
-Bug reports and pull requests are welcome on GitHub at https://github.com/ydah/parsel.
+Bug reports and pull requests are welcome on GitHub at https://github.com/ydah/parselly.

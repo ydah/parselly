@@ -1,16 +1,16 @@
 # frozen_string_literal: true
 
-require_relative "lib/parsel"
+require_relative "lib/parselly"
 
 Gem::Specification.new do |spec|
-  spec.name = "parsel"
-  spec.version = Parsel::VERSION
+  spec.name = "parselly"
+  spec.version = Parselly::VERSION
   spec.authors = ["Yudai Takada"]
   spec.email = ["t.yudai92@gmail.com"]
 
   spec.summary = "Pure Ruby CSS selector parser."
-  spec.description = "Parsel is a pure Ruby CSS selector parser. Provides a simple and easy-to-use API for parsing CSS selectors."
-  spec.homepage = 'https://github.com/ydah/parsel'
+  spec.description = "Parselly is a pure Ruby CSS selector parser. Provides a simple and easy-to-use API for parsing CSS selectors."
+  spec.homepage = 'https://github.com/ydah/parselly'
   spec.license = "MIT"
   spec.required_ruby_version = ">= 2.5"
 

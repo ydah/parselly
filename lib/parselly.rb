@@ -2,7 +2,7 @@
 
 require 'strscan'
 
-class Parsel
+class Parselly
   VERSION = "0.1.0"
 
   def self.sanitize(selector)
