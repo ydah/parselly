@@ -1,4 +1,4 @@
-# Parselly
+# Parselly [![Gem Version](https://badge.fury.io/rb/parselly.svg)](https://badge.fury.io/rb/parselly) [![CI](https://github.com/ydah/parselly/actions/workflows/test.yml/badge.svg)](https://github.com/ydah/parselly/actions/workflows/test.yml)
 
 Parselly is a module providing a simple way to parse and extract data from a css selector.
 
