@@ -11,9 +11,7 @@ class Parselly
 
     # Special case: if the selector is of length 1 and
     # the first character is `-`
-    if selector.length == 1 && scanner.peek(1) == '-'
-      return "\\#{selector}"
-    end
+    return "\\#{selector}" if selector.length == 1 && scanner.peek(1) == '-'
 
     until scanner.eos?
       # NULL character (U+0000)
