@@ -25,7 +25,7 @@ class Parselly
         result << escaped_hex(scanner.matched)
       # Second character is a digit and first is `-`
       elsif scanner.pos == 1 && scanner.scan(/\d/) &&
-          scanner.pre_match == '-'
+            scanner.pre_match == '-'
         result << escaped_hex(scanner.matched)
       # Alphanumeric characters, `-`, `_`
       elsif scanner.scan(/[a-zA-Z0-9\-_]/)
