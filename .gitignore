@@ -8,3 +8,4 @@
 /tmp/
 /parser.output
 Gemfile.lock
+spec/examples.out
