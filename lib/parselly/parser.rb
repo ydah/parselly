@@ -689,9 +689,21 @@ end
 # Insert DESCENDANT combinator if:
 # - Current token can end a compound selector
 # - Next token can start a compound selector
+# - EXCEPT when current is type_selector and next is subclass_selector
+#   (they belong to the same compound selector)
 def needs_descendant?(current, next_tok)
-  can_end = can_end_compound?(current[0])
-  can_start = can_start_compound?(next_tok[0])
+  current_type = current[0]
+  next_type = next_tok[0]
+
+  can_end = can_end_compound?(current_type)
+  can_start = can_start_compound?(next_type)
+
+  # Type selector followed by subclass selector = same compound
+  if [:IDENT, :STAR].include?(current_type) &&
+     [:DOT, :HASH, :LBRACKET, :COLON].include?(next_type)
+    return false
+  end
+
   can_end && can_start
 end
 
@@ -700,7 +712,8 @@ def can_end_compound?(token_type)
 end
 
 def can_start_compound?(token_type)
-  [:IDENT, :STAR].include?(token_type)
+  # Type selectors and subclass selectors can start a compound selector
+  [:IDENT, :STAR, :DOT, :HASH, :LBRACKET, :COLON].include?(token_type)
 end
 
 def normalize_an_plus_b(node)
