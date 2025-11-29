@@ -686,6 +686,9 @@ def preprocess_tokens!
   @tokens = new_tokens
 end
 
+# Insert DESCENDANT combinator if:
+# - Current token can end a compound selector
+# - Next token can start a compound selector
 def needs_descendant?(current, next_tok)
   can_end = can_end_compound?(current[0])
   can_start = can_start_compound?(next_tok[0])
