@@ -76,7 +76,11 @@ RSpec.describe Parselly::Lexer do
       it 'handles escaped characters' do
         lexer = Parselly::Lexer.new('"hello \"world\""')
         tokens = lexer.tokenize
-        expect(tokens[0][1]).to include('world')
+        # NOTE: Escape sequences inside strings are not processed.
+        # The raw string content is returned as-is after removing outer quotes.
+        # This test verifies the string is tokenized, but escapes remain unprocessed.
+        expect(tokens[0][0]).to eq(:STRING)
+        expect(tokens[0][1]).to eq('hello \"world\"')
       end
     end
 
