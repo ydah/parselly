@@ -174,19 +174,20 @@ module Parselly
       result
     end
 
-    # Checks if this selector contains multiple different selector types.
-    # A selector is considered complex if it contains more than one type of:
-    # ID, class, attribute, pseudo-class, or type selectors.
+    # Checks if this selector is a compound selector, as defined by CSS.
+    # A compound selector combines multiple simple selectors (type, class, id,
+    # attribute, pseudo-class) without combinators (e.g., `div.class#id[attr]:hover`).
+    # Returns true if more than one simple selector type is present.
     #
-    # @return [Boolean] true if multiple selector types are present
-    def multiple_selectors?
+    # @return [Boolean] true if this node represents a compound selector
+    def compound_selector?
       types = []
 
       types << :id if id?
       types << :class unless classes.empty?
       types << :attribute if attribute?
       types << :pseudo unless pseudo_classes.empty?
-      types << :type if has_type_selector?
+      types << :type if type_selector?
 
       types.size > 1
     end
@@ -225,7 +226,7 @@ module Parselly
     # Checks if this node or any descendant contains a type selector.
     #
     # @return [Boolean] true if a type selector is present
-    def has_type_selector?
+    def type_selector?
       type == :type_selector || descendants.any? { |node| node.type == :type_selector }
     end
   end

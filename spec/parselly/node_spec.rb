@@ -158,55 +158,55 @@ RSpec.describe Parselly::Node do
     end
   end
 
-  describe '#multiple_selectors?' do
+  describe '#compound_selector?' do
     it 'returns false for a single type selector' do
       ast = parser.parse('div')
-      expect(ast.multiple_selectors?).to be false
+      expect(ast.compound_selector?).to be false
     end
 
     it 'returns false for a single class selector' do
       ast = parser.parse('.myclass')
-      expect(ast.multiple_selectors?).to be false
+      expect(ast.compound_selector?).to be false
     end
 
     it 'returns false for a single ID selector' do
       ast = parser.parse('#myid')
-      expect(ast.multiple_selectors?).to be false
+      expect(ast.compound_selector?).to be false
     end
 
     it 'returns true for type and class selector' do
       ast = parser.parse('div.myclass')
-      expect(ast.multiple_selectors?).to be true
+      expect(ast.compound_selector?).to be true
     end
 
     it 'returns true for type and ID selector' do
       ast = parser.parse('div#myid')
-      expect(ast.multiple_selectors?).to be true
+      expect(ast.compound_selector?).to be true
     end
 
     it 'returns true for type, ID, and class selector' do
       ast = parser.parse('div#myid.myclass')
-      expect(ast.multiple_selectors?).to be true
+      expect(ast.compound_selector?).to be true
     end
 
     it 'returns true for type and attribute selector' do
       ast = parser.parse('input[type="text"]')
-      expect(ast.multiple_selectors?).to be true
+      expect(ast.compound_selector?).to be true
     end
 
     it 'returns true for type and pseudo-class selector' do
       ast = parser.parse('a:hover')
-      expect(ast.multiple_selectors?).to be true
+      expect(ast.compound_selector?).to be true
     end
 
     it 'returns true for class and pseudo-class selector' do
       ast = parser.parse('.button:hover')
-      expect(ast.multiple_selectors?).to be true
+      expect(ast.compound_selector?).to be true
     end
 
     it 'returns false for multiple classes' do
       ast = parser.parse('.foo.bar')
-      expect(ast.multiple_selectors?).to be false
+      expect(ast.compound_selector?).to be false
     end
   end
 
