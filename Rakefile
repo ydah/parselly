@@ -1,19 +1,18 @@
 # frozen_string_literal: true
 
-require "bundler/gem_tasks"
-require "rake/testtask"
+require 'bundler/gem_tasks'
 
-namespace "build" do
-  desc "build parser from parser.y"
+namespace 'build' do
+  desc 'build parser from parser.y'
   task :parser do
-    sh "bundle exec racc parser.y --embedded -o lib/parser.rb -t --log-file=parser.output"
+    sh 'bundle exec racc parser.y --embedded --frozen -o lib/parselly/parser.rb -t --log-file=parser.output'
   end
 end
 
-Rake::TestTask.new(:test) do |t|
-  t.libs << "test/lib"
-  t.test_files = FileList["test/**/test_*.rb"]
+require 'rspec/core/rake_task'
+RSpec::Core::RakeTask.new(:spec) do |spec|
+  spec.pattern = FileList['spec/**/*_spec.rb']
 end
-task :test => "build:parser"
+task spec: 'build:parser'
 
-task default: :test
+task default: :spec

@@ -2,10 +2,13 @@
 
 require 'strscan'
 
-class Parselly
-  VERSION = "0.1.0"
+require_relative 'parselly/lexer'
+require_relative 'parselly/node'
+require_relative 'parselly/parser'
+require_relative 'parselly/version'
 
-  def self.sanitize(selector)
+module Parselly
+  def sanitize(selector)
     scanner = StringScanner.new(selector)
     result = +''
 
@@ -39,8 +42,9 @@ class Parselly
     result
   end
 
-  def self.escaped_hex(char)
+  def escaped_hex(char)
     "\\#{char.ord.to_s(16)} "
   end
-  private_class_method :escaped_hex
+
+  module_function :sanitize, :escaped_hex
 end

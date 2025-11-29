@@ -1,18 +1,18 @@
 # frozen_string_literal: true
 
-require_relative "lib/parselly"
+require_relative 'lib/parselly/version'
 
 Gem::Specification.new do |spec|
-  spec.name = "parselly"
+  spec.name = 'parselly'
   spec.version = Parselly::VERSION
-  spec.authors = ["Yudai Takada"]
-  spec.email = ["t.yudai92@gmail.com"]
+  spec.authors = ['Yudai Takada']
+  spec.email = ['t.yudai92@gmail.com']
 
-  spec.summary = "Pure Ruby CSS selector parser."
-  spec.description = "Parselly is a pure Ruby CSS selector parser. Provides a simple and easy-to-use API for parsing CSS selectors."
+  spec.summary = 'Pure Ruby CSS selector parser.'
+  spec.description = 'Parselly is a pure Ruby CSS selector parser. Provides a simple and easy-to-use API for parsing CSS selectors.'
   spec.homepage = 'https://github.com/ydah/parselly'
-  spec.license = "MIT"
-  spec.required_ruby_version = ">= 2.5"
+  spec.license = 'MIT'
+  spec.required_ruby_version = '>= 2.7'
 
   spec.metadata['homepage_uri']          = spec.homepage
   spec.metadata['source_code_uri']       = spec.homepage
@@ -28,7 +28,7 @@ Gem::Specification.new do |spec|
         f.start_with?(*%w[bin/ test/ spec/ features/ .git .github appveyor Gemfile])
     end
   end
-  spec.bindir = "exe"
+  spec.bindir = 'exe'
   spec.executables = spec.files.grep(%r{\Aexe/}) { |f| File.basename(f) }
-  spec.require_paths = ["lib"]
+  spec.require_paths = ['lib']
 end

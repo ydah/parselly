@@ -1,17 +1,19 @@
-name:  CI
-
+name: test
 on:
   push:
     branches:
       - main
-
   pull_request:
-
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
 jobs:
   ruby-versions:
     uses: ruby/actions/.github/workflows/ruby_versions.yml@master
     with:
-      min_version: 2.5
+      min_version: 2.7
   build:
     needs: ruby-versions
     name: build (${{ matrix.ruby }} / ${{ matrix.os }})
@@ -19,9 +21,6 @@ jobs:
       matrix:
         ruby: ${{ fromJson(needs.ruby-versions.outputs.versions) }}
         os: [ ubuntu-latest, macos-latest ]
-        exclude:
-          - ruby: 2.5
-            os: macos-latest
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
