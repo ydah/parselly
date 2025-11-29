@@ -210,6 +210,108 @@ RSpec.describe Parselly::Node do
     end
   end
 
+  describe '#to_selector' do
+    it 'converts a type selector back to string' do
+      ast = parser.parse('div')
+      expect(ast.to_selector).to eq('div')
+    end
+
+    it 'converts a class selector back to string' do
+      ast = parser.parse('.myclass')
+      expect(ast.to_selector).to eq('.myclass')
+    end
+
+    it 'converts an ID selector back to string' do
+      ast = parser.parse('#myid')
+      expect(ast.to_selector).to eq('#myid')
+    end
+
+    it 'converts a universal selector back to string' do
+      ast = parser.parse('*')
+      expect(ast.to_selector).to eq('*')
+    end
+
+    it 'converts a compound selector back to string' do
+      ast = parser.parse('div.foo#bar')
+      expect(ast.to_selector).to eq('div.foo#bar')
+    end
+
+    it 'converts a child combinator selector back to string' do
+      ast = parser.parse('div > span')
+      expect(ast.to_selector).to eq('div > span')
+    end
+
+    it 'converts an adjacent combinator selector back to string' do
+      ast = parser.parse('h1 + h2')
+      expect(ast.to_selector).to eq('h1 + h2')
+    end
+
+    it 'converts a sibling combinator selector back to string' do
+      ast = parser.parse('h1 ~ h2')
+      expect(ast.to_selector).to eq('h1 ~ h2')
+    end
+
+    it 'converts a simple attribute selector back to string' do
+      ast = parser.parse('[disabled]')
+      expect(ast.to_selector).to eq('[disabled]')
+    end
+
+    it 'converts an attribute selector with equality operator back to string' do
+      ast = parser.parse('[type="text"]')
+      expect(ast.to_selector).to eq('[type="text"]')
+    end
+
+    it 'converts an attribute selector with includes operator back to string' do
+      ast = parser.parse('[class~="highlight"]')
+      expect(ast.to_selector).to eq('[class~="highlight"]')
+    end
+
+    it 'converts an attribute selector with prefix match operator back to string' do
+      ast = parser.parse('[href^="https"]')
+      expect(ast.to_selector).to eq('[href^="https"]')
+    end
+
+    it 'converts an attribute selector with dash match operator back to string' do
+      ast = parser.parse('[lang|="en"]')
+      expect(ast.to_selector).to eq('[lang|="en"]')
+    end
+
+    it 'converts a pseudo-class selector back to string' do
+      ast = parser.parse(':hover')
+      expect(ast.to_selector).to eq(':hover')
+    end
+
+    it 'converts a pseudo-element selector back to string' do
+      ast = parser.parse('::before')
+      expect(ast.to_selector).to eq('::before')
+    end
+
+    it 'converts a pseudo-function selector back to string' do
+      ast = parser.parse(':nth-child(2n+1)')
+      expect(ast.to_selector).to eq(':nth-child(2n+1)')
+    end
+
+    it 'converts multiple pseudo-classes back to string' do
+      ast = parser.parse('a:hover:focus')
+      expect(ast.to_selector).to eq('a:hover:focus')
+    end
+
+    it 'converts a selector list back to string' do
+      ast = parser.parse('div.foo, p.bar')
+      expect(ast.to_selector).to eq('div.foo, p.bar')
+    end
+
+    it 'converts a complex selector with multiple combinators back to string' do
+      ast = parser.parse('div > span + a')
+      expect(ast.to_selector).to eq('div > span + a')
+    end
+
+    it 'converts a compound selector with attribute back to string' do
+      ast = parser.parse('input.form-control[type="text"]')
+      expect(ast.to_selector).to eq('input.form-control[type="text"]')
+    end
+  end
+
   describe 'tree traversal methods' do
     describe '#ancestors' do
       it 'returns empty array for root node' do

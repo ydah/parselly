@@ -492,12 +492,9 @@ RSpec.describe 'CSS Selector Parser Integration' do
     end
 
     it 'can serialize AST back to selector string' do
-      # This would be a useful feature to implement
-      pending 'Serialization not yet implemented'
-
       original = 'div.container > p#content'
       ast = parser.parse(original)
-      serialized = ast.to_selector # Method to implement
+      serialized = ast.to_selector
       expect(serialized).to eq(original)
     end
   end
