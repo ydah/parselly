@@ -22,21 +22,29 @@ class Parselly::Parser
   preclow
 rule
   selector_list
-    : complex_selector
-      { result = Node.new(:selector_list, nil, @current_position); result.add_child(val[0]) }
-    | selector_list COMMA complex_selector
-      { result = val[0]; result.add_child(val[2]) }
+    : complex_selector (COMMA complex_selector)*
+      {
+        result = Node.new(:selector_list, nil, @current_position)
+        result.add_child(val[0])
+        val[1].each { |pair| result.add_child(pair[1]) }
+      }
     ;
 
   complex_selector
-    : compound_selector
-      { result = val[0] }
-    | complex_selector combinator compound_selector
+    : compound_selector (combinator compound_selector)*
       {
-        result = Node.new(:selector, nil, val[0].position)
-        result.add_child(val[0])
-        result.add_child(val[1])
-        result.add_child(val[2])
+        if val[1].empty?
+          result = val[0]
+        else
+          result = val[0]
+          val[1].each do |pair|
+            node = Node.new(:selector, nil, result.position)
+            node.add_child(result)
+            node.add_child(pair[0])
+            node.add_child(pair[1])
+            result = node
+          end
+        end
       }
     ;
 
@@ -68,10 +76,8 @@ rule
     ;
 
   simple_selector_tail
-    : /* empty */
-      { result = [] }
-    | simple_selector_tail subclass_selector
-      { result = val[0]; result << val[1] }
+    : subclass_selector*
+      { result = val[0] }
     ;
 
   type_selector
@@ -230,10 +236,12 @@ rule
     ;
 
   relative_selector_list
-    : relative_selector
-      { result = Node.new(:selector_list, nil, @current_position); result.add_child(val[0]) }
-    | relative_selector_list COMMA relative_selector
-      { result = val[0]; result.add_child(val[2]) }
+    : relative_selector (COMMA relative_selector)*
+      {
+        result = Node.new(:selector_list, nil, @current_position)
+        result.add_child(val[0])
+        val[1].each { |pair| result.add_child(pair[1]) }
+      }
     ;
 
   relative_selector
