@@ -310,15 +310,110 @@ RSpec.describe 'CSS Selector Parser Integration' do
         end
       end
     end
+
+    context ':not() negation pseudo-class' do
+      it 'parses :not() with simple selectors' do
+        selectors = [
+          ':not(p)',
+          'div:not(.active)',
+          'button:not(#submit)',
+          'input:not([disabled])',
+          'a:not(:hover)',
+          '*:not(::before)'
+        ]
+
+        selectors.each do |selector|
+          expect { parser.parse(selector) }.not_to raise_error
+        end
+      end
+
+      it 'parses :not() with attribute selectors' do
+        selectors = [
+          'a:not([target="_blank"])',
+          'input:not([type="hidden"])',
+          '[class]:not([class*="test"])',
+          'button:not([disabled]):not([aria-disabled])'
+        ]
+
+        selectors.each do |selector|
+          expect { parser.parse(selector) }.not_to raise_error
+        end
+      end
+
+      it 'parses :not() with pseudo-classes' do
+        selectors = [
+          'li:not(:first-child)',
+          'tr:not(:nth-child(even))',
+          'div:not(:empty)',
+          'input:not(:checked)',
+          'option:not(:disabled)'
+        ]
+
+        selectors.each do |selector|
+          expect { parser.parse(selector) }.not_to raise_error
+        end
+      end
+
+      it 'parses multiple :not() pseudo-classes chained' do
+        selectors = [
+          'button:not(.primary):not(.secondary)',
+          'input:not([type="submit"]):not([type="reset"])',
+          'div:not(:first-child):not(:last-child)',
+          '.btn:not(:disabled):not(.disabled)'
+        ]
+
+        selectors.each do |selector|
+          expect { parser.parse(selector) }.not_to raise_error
+        end
+      end
+
+      it 'parses :not() in complex selectors' do
+        selectors = [
+          'div > p:not(.intro)',
+          'ul > li:not(:first-child) + li',
+          '.container > *:not(.hidden)',
+          'form input:not([type="hidden"])',
+          'nav a:not(.active):hover'
+        ]
+
+        selectors.each do |selector|
+          expect { parser.parse(selector) }.not_to raise_error
+        end
+      end
+
+      it 'creates correct AST structure for :not()' do
+        ast = parser.parse('div:not(.active)')
+
+        # Navigate: selector_list > simple_selector_sequence
+        seq = ast.children.first
+        expect(seq.type).to eq(:simple_selector_sequence)
+
+        # Should have div (type_selector) and :not() (pseudo_function)
+        type_sel = seq.children.find { |c| c.type == :type_selector }
+        expect(type_sel.value).to eq('div')
+
+        pseudo_func = seq.children.find { |c| c.type == :pseudo_function }
+        expect(pseudo_func.value).to eq('not')
+
+        # :not() should contain a selector_list with .active
+        selector_list = pseudo_func.children.first
+        expect(selector_list.type).to eq(:selector_list)
+
+        # Inside selector_list should be the .active class selector
+        inner_seq = selector_list.children.first
+        class_sel = inner_seq.children.find { |c| c.type == :class_selector }
+        expect(class_sel.value).to eq('active')
+      end
+    end
   end
 
   describe 'Performance benchmarks' do
     it 'parses complex selector within reasonable time' do
       complex_selector = 'html > body > div#app > main.content > article:first-of-type > section.intro > div.container > div.row > div[class^="col-"]:nth-child(2) > p:not(:empty) + ul > li:first-child > a[href^="https://"]:not([target="_blank"])'
 
-      start_time = Time.now
+      start_time = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       parser.parse(complex_selector)
-      end_time = Time.now
+      end_time = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
       expect(end_time - start_time).to be < 0.1 # Should parse in less than 100ms
     end
@@ -728,6 +823,54 @@ RSpec.describe 'CSS Selector Parser Integration' do
           expect(node&.value).to eq(expected_value),
                                  "Expected #{selector} to create #{node_type} with value '#{expected_value}'"
         end
+      end
+    end
+  end
+
+  describe 'Error handling' do
+    context 'Invalid selector syntax' do
+      it 'raises error for unclosed attribute selector' do
+        expect { parser.parse('[attr') }.to raise_error(/Parse error|Unexpected/)
+      end
+
+      it 'raises error for unclosed parenthesis in pseudo-function' do
+        expect { parser.parse(':nth-child(2n') }.to raise_error(/Parse error|Unexpected/)
+      end
+
+      it 'raises error for invalid attribute operator' do
+        expect { parser.parse('[attr==value]') }.to raise_error(/Parse error|Unexpected/)
+      end
+
+      it 'raises error for missing selector after combinator' do
+        expect { parser.parse('div >') }.to raise_error(/Parse error|Unexpected/)
+      end
+
+      it 'raises error for consecutive combinators' do
+        expect { parser.parse('div > > p') }.to raise_error(/Parse error|Unexpected/)
+      end
+    end
+
+    context 'Invalid characters' do
+      it 'raises error for invalid characters in selector' do
+        expect { parser.parse('div@class') }.to raise_error(/Unexpected character/)
+      end
+
+      it 'raises error for invalid characters at start' do
+        expect { parser.parse('@invalid') }.to raise_error(/Unexpected character/)
+      end
+    end
+
+    context 'Empty or malformed input' do
+      it 'raises error for empty string' do
+        expect { parser.parse('') }.to raise_error(/Parse error|Unexpected/)
+      end
+
+      it 'raises error for only whitespace' do
+        expect { parser.parse('   ') }.to raise_error(/Parse error|Unexpected/)
+      end
+
+      it 'raises error for only combinator' do
+        expect { parser.parse('>') }.to raise_error(/Parse error|Unexpected/)
       end
     end
   end
