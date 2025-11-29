@@ -111,7 +111,8 @@ module Parselly
     def scan_identifier
       # Match identifiers with optional escape sequences
       # CSS allows \<any-char> as escape in identifiers (e.g., .hover\:bg-blue-500)
-      return unless @scanner.scan(/[a-zA-Z_](?:[\w-]|\\[^\n\r\f])*/)
+      # Also support CSS custom properties starting with -- (e.g., --my-variable)
+      return unless @scanner.scan(/(?:--|-?[a-zA-Z_])(?:[\w-]|\\[^\n\r\f])*/)
 
       ident = @scanner.matched
       update_position(ident)
