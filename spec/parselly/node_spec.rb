@@ -418,6 +418,69 @@ RSpec.describe Parselly::Node do
       end
     end
 
+    describe '#replace_child' do
+      it 'returns nil when new_node is nil' do
+        parent = Parselly::Node.new(:selector_list)
+        child = Parselly::Node.new(:type_selector, 'div')
+        parent.add_child(child)
+
+        result = parent.replace_child(0, nil)
+        expect(result).to be_nil
+        expect(parent.children).to eq([child]) # Child should not be replaced
+      end
+
+      it 'returns nil when index is negative' do
+        parent = Parselly::Node.new(:selector_list)
+        child = Parselly::Node.new(:type_selector, 'div')
+        parent.add_child(child)
+
+        new_child = Parselly::Node.new(:class_selector, 'myclass')
+        result = parent.replace_child(-1, new_child)
+        expect(result).to be_nil
+        expect(parent.children).to eq([child]) # Child should not be replaced
+      end
+
+      it 'returns nil when index is out of bounds' do
+        parent = Parselly::Node.new(:selector_list)
+        child = Parselly::Node.new(:type_selector, 'div')
+        parent.add_child(child)
+
+        new_child = Parselly::Node.new(:class_selector, 'myclass')
+        result = parent.replace_child(10, new_child)
+        expect(result).to be_nil
+        expect(parent.children).to eq([child]) # Child should not be replaced
+      end
+
+      it 'clears parent reference of old child' do
+        parent = Parselly::Node.new(:selector_list)
+        old_child = Parselly::Node.new(:type_selector, 'div')
+        parent.add_child(old_child)
+
+        expect(old_child.parent).to eq(parent)
+
+        new_child = Parselly::Node.new(:class_selector, 'myclass')
+        parent.replace_child(0, new_child)
+
+        expect(old_child.parent).to be_nil
+        expect(new_child.parent).to eq(parent)
+      end
+
+      it 'successfully replaces child at valid index' do
+        parent = Parselly::Node.new(:selector_list)
+        child1 = Parselly::Node.new(:type_selector, 'div')
+        child2 = Parselly::Node.new(:id_selector, 'myid')
+        parent.add_child(child1)
+        parent.add_child(child2)
+
+        new_child = Parselly::Node.new(:class_selector, 'myclass')
+        result = parent.replace_child(0, new_child)
+
+        expect(result).to eq(new_child)
+        expect(parent.children).to eq([new_child, child2])
+      end
+    end
+
+
     describe '#siblings' do
       it 'returns empty array when no parent' do
         node = Parselly::Node.new(:type_selector, 'div')

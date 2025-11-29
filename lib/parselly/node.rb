@@ -49,8 +49,14 @@ module Parselly
     #
     # @param index [Integer] the index of the child to replace
     # @param new_node [Node] the new child node
-    # @return [Node] the new node
+    # @return [Node, nil] the new node, or nil if invalid parameters
     def replace_child(index, new_node)
+      return nil if new_node.nil?
+      return nil if index < 0 || index >= @children.size
+
+      old_node = @children[index]
+      old_node.parent = nil if old_node
+
       @children[index] = new_node
       new_node.parent = self
       invalidate_cache

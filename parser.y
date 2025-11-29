@@ -260,6 +260,14 @@ end
 ---- header
 require 'set'
 
+# Pre-computed sets for faster lookup
+CAN_END_COMPOUND = Set[:IDENT, :STAR, :RPAREN, :RBRACKET].freeze
+CAN_START_COMPOUND = Set[:IDENT, :STAR, :DOT, :HASH, :LBRACKET, :COLON].freeze
+TYPE_SELECTOR_TYPES = Set[:IDENT, :STAR].freeze
+SUBCLASS_SELECTOR_TYPES = Set[:DOT, :HASH, :LBRACKET, :COLON].freeze
+NTH_PSEUDO_NAMES = Set['nth-child', 'nth-last-child', 'nth-of-type', 'nth-last-of-type', 'nth-col', 'nth-last-col'].freeze
+AN_PLUS_B_REGEX = /^(even|odd|[+-]?\d*n(?:[+-]\d+)?|[+-]?n(?:[+-]\d+)?|\d+)$/.freeze
+
 ---- inner
 def parse(input)
   @lexer = Parselly::Lexer.new(input)
@@ -296,12 +304,6 @@ def preprocess_tokens!
   @tokens = new_tokens.first(new_tokens_idx)
 end
 
-# Pre-computed sets for faster lookup
-CAN_END_COMPOUND = Set[:IDENT, :STAR, :RPAREN, :RBRACKET].freeze
-CAN_START_COMPOUND = Set[:IDENT, :STAR, :DOT, :HASH, :LBRACKET, :COLON].freeze
-TYPE_SELECTOR_TYPES = Set[:IDENT, :STAR].freeze
-SUBCLASS_SELECTOR_TYPES = Set[:DOT, :HASH, :LBRACKET, :COLON].freeze
-
 # Insert DESCENDANT combinator if:
 # - Current token can end a compound selector
 # - Next token can start a compound selector
@@ -317,9 +319,6 @@ def needs_descendant?(current, next_tok)
 
   CAN_END_COMPOUND.include?(current_type) && CAN_START_COMPOUND.include?(next_type)
 end
-
-NTH_PSEUDO_NAMES = Set['nth-child', 'nth-last-child', 'nth-of-type', 'nth-last-of-type', 'nth-col', 'nth-last-col'].freeze
-AN_PLUS_B_REGEX = /^(even|odd|[+-]?\d*n(?:[+-]\d+)?|[+-]?n(?:[+-]\d+)?|\d+)$/.freeze
 
 def normalize_an_plus_b(node)
   return unless node.respond_to?(:children) && node.children
