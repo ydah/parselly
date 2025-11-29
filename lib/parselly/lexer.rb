@@ -94,26 +94,29 @@ module Parselly
       if @scanner.scan(/"([^"\\]|\\.)*"/)
         str = @scanner.matched
         update_position(str)
-        # NOTE: Escape sequences (e.g., \n, \", \\) are not processed.
+        # NOTE: Escape sequences inside strings (e.g., \n, \", \\) are not processed.
         # The raw string content is returned as-is after removing quotes.
-        # This is a known limitation for attribute values and string literals.
+        # This is a known limitation for attribute values.
         str[1..-2] # Remove quotes
       elsif @scanner.scan(/'([^'\\]|\\.)*'/)
         str = @scanner.matched
         update_position(str)
-        # NOTE: Escape sequences (e.g., \n, \', \\) are not processed.
+        # NOTE: Escape sequences inside strings (e.g., \n, \', \\) are not processed.
         # The raw string content is returned as-is after removing quotes.
-        # This is a known limitation for attribute values and string literals.
+        # This is a known limitation for attribute values.
         str[1..-2] # Remove quotes
       end
     end
 
     def scan_identifier
-      return unless @scanner.scan(/[a-zA-Z_][\w-]*/)
+      # Match identifiers with optional escape sequences
+      # CSS allows \<any-char> as escape in identifiers (e.g., .hover\:bg-blue-500)
+      return unless @scanner.scan(/[a-zA-Z_](?:[\w-]|\\[^\n\r\f])*/)
 
       ident = @scanner.matched
       update_position(ident)
-      ident
+      # Remove backslashes from escaped characters
+      ident.gsub(/\\(.)/, '\1')
     end
 
     def scan_number

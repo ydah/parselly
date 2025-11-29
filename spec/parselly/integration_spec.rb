@@ -63,8 +63,6 @@ RSpec.describe 'CSS Selector Parser Integration' do
 
     context 'Tailwind CSS selectors' do
       it 'parses Tailwind utility selectors' do
-        skip 'Escaped characters in class names are not yet supported'
-
         selectors = [
           '.hover\\:bg-blue-500:hover',
           '.focus\\:outline-none:focus',
