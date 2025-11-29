@@ -658,120 +658,100 @@ module Parselly
   class Parser < Racc::Parser
 
 module_eval(<<'...end parser.y/module_eval...', 'parser.y', 249)
-  def parse(input)
-    @lexer = Parselly::Lexer.new(input)
-    @tokens = @lexer.tokenize
-    preprocess_tokens!
-    @index = 0
-    @current_position = { line: 1, column: 1 }
-    ast = do_parse
-    normalize_an_plus_b(ast)
-    ast
-  end
+def parse(input)
+  @lexer = Parselly::Lexer.new(input)
+  @tokens = @lexer.tokenize
+  preprocess_tokens!
+  @index = 0
+  @current_position = { line: 1, column: 1 }
+  ast = do_parse
+  normalize_an_plus_b(ast)
+  ast
+end
 
-  # Insert implicit descendant combinators where needed
-  def preprocess_tokens!
-    new_tokens = []
-    i = 0
-
-    while i < @tokens.size
-      token = @tokens[i]
-      next_token = @tokens[i + 1]
-
-      new_tokens << token
-
-      # Insert DESCENDANT combinator if:
-      # - Current token can end a compound selector
-      # - Next token can start a compound selector
-      # - There's whitespace between them (column difference suggests space)
-      if next_token && needs_descendant?(token, next_token)
-        pos = { line: token[2][:line], column: token[2][:column] }
-        new_tokens << [:DESCENDANT, ' ', pos]
-      end
-
-      i += 1
+def preprocess_tokens!
+  new_tokens = []
+  i = 0
+  while i < @tokens.size
+    token = @tokens[i]
+    next_token = @tokens[i + 1]
+    new_tokens << token
+    if next_token && needs_descendant?(token, next_token)
+      pos = { line: token[2][:line], column: token[2][:column] }
+      new_tokens << [:DESCENDANT, ' ', pos]
     end
-
-    @tokens = new_tokens
+    i += 1
   end
 
-  def needs_descendant?(current, next_tok)
-    can_end = can_end_compound?(current[0])
-    can_start = can_start_compound?(next_tok[0])
-    can_end && can_start
-  end
+  @tokens = new_tokens
+end
 
-  def can_end_compound?(token_type)
-    [:IDENT, :STAR, :RPAREN, :RBRACKET].include?(token_type)
-  end
+def needs_descendant?(current, next_tok)
+  can_end = can_end_compound?(current[0])
+  can_start = can_start_compound?(next_tok[0])
+  can_end && can_start
+end
 
-  def can_start_compound?(token_type)
-    # Only IDENT and STAR can start a new compound selector
-    # HASH, DOT, LBRACKET, COLON are subclass selectors that continue a compound selector
-    [:IDENT, :STAR].include?(token_type)
-  end
+def can_end_compound?(token_type)
+  [:IDENT, :STAR, :RPAREN, :RBRACKET].include?(token_type)
+end
 
-  # Normalize An+B notation: convert selector_list nodes that are children of
-  # nth-* pseudo-functions and contain An+B keywords to an_plus_b nodes
-  def normalize_an_plus_b(node)
-    return unless node.respond_to?(:children) && node.children
+def can_start_compound?(token_type)
+  [:IDENT, :STAR].include?(token_type)
+end
 
-    if node.type == :pseudo_function && nth_pseudo?(node.value)
-      # Check if the child is a selector_list that should be an_plus_b
-      child = node.children.first
-      if child && child.type == :selector_list
-        # Try to extract An+B value from selector_list
-        an_plus_b_value = extract_an_plus_b_value(child)
-        if an_plus_b_value
-          # Replace selector_list with an_plus_b node
-          node.children[0] = Node.new(:an_plus_b, an_plus_b_value, child.position)
-        end
+def normalize_an_plus_b(node)
+  return unless node.respond_to?(:children) && node.children
+
+  if node.type == :pseudo_function && nth_pseudo?(node.value)
+    child = node.children.first
+    if child && child.type == :selector_list
+      an_plus_b_value = extract_an_plus_b_value(child)
+      if an_plus_b_value
+        node.children[0] = Node.new(:an_plus_b, an_plus_b_value, child.position)
       end
     end
-
-    # Recursively normalize children
-    node.children.each { |child| normalize_an_plus_b(child) }
   end
+  node.children.each { |child| normalize_an_plus_b(child) }
+end
 
-  def nth_pseudo?(name)
-    %w[nth-child nth-last-child nth-of-type nth-last-of-type nth-col nth-last-col].include?(name)
+def nth_pseudo?(name)
+  %w[nth-child nth-last-child nth-of-type nth-last-of-type nth-col nth-last-col].include?(name)
+end
+
+def extract_an_plus_b_value(selector_list_node)
+  return nil unless selector_list_node.children.size == 1
+
+  seq = selector_list_node.children.first
+  return nil unless seq.type == :simple_selector_sequence
+  return nil unless seq.children.size == 1
+
+  type_sel = seq.children.first
+  return nil unless type_sel.type == :type_selector
+
+  value = type_sel.value
+  if value =~ /^(even|odd|n|n-\d+|n\+\d+|\d+n|\d+n-\d+|\d+n\+\d+)$/
+    value
+  else
+    nil
   end
+end
 
-  def extract_an_plus_b_value(selector_list_node)
-    # Check if this is a simple selector_list with just a type_selector
-    return nil unless selector_list_node.children.size == 1
+def next_token
+  return [false, nil] if @index >= @tokens.size
 
-    seq = selector_list_node.children.first
-    return nil unless seq.type == :simple_selector_sequence
-    return nil unless seq.children.size == 1
+  token_type, token_value, token_position = @tokens[@index]
+  @index += 1
+  @current_position = token_position
 
-    type_sel = seq.children.first
-    return nil unless type_sel.type == :type_selector
+  [token_type, token_value]
+end
 
-    # Check if the value is an An+B keyword or pattern
-    value = type_sel.value
-    if value =~ /^(even|odd|n|n-\d+|n\+\d+|\d+n|\d+n-\d+|\d+n\+\d+)$/
-      value
-    else
-      nil
-    end
-  end
-
-  def next_token
-    return [false, nil] if @index >= @tokens.size
-
-    token_type, token_value, token_position = @tokens[@index]
-    @index += 1
-    @current_position = token_position
-
-    [token_type, token_value]
-  end
-
-  def on_error(token_id, val, vstack)
-    token_name = token_to_str(token_id) || '?'
-    pos = @current_position || { line: '?', column: '?' }
-    raise "Parse error: unexpected #{token_name} '#{val}' at #{pos[:line]}:#{pos[:column]}"
-  end
+def on_error(token_id, val, vstack)
+  token_name = token_to_str(token_id) || '?'
+  pos = @current_position || { line: '?', column: '?' }
+  raise "Parse error: unexpected #{token_name} '#{val}' at #{pos[:line]}:#{pos[:column]}"
+end
 ...end parser.y/module_eval...
 ##### State transition tables begin ###
 

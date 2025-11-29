@@ -55,7 +55,6 @@ module Parselly
           @tokens << [:IDENT, token, pos]
         else
           char = @scanner.getch
-          update_position(char)
           raise "Unexpected character: #{char} at #{pos[:line]}:#{pos[:column]}"
         end
       end
