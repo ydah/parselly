@@ -673,7 +673,7 @@ end
 def preprocess_tokens!
   return if @tokens.size <= 1
 
-  new_tokens = Array.new(@tokens.size * 2) # Pre-allocate with estimated size
+  new_tokens = Array.new(@tokens.size + (@tokens.size / 2)) # Pre-allocate with conservative estimate
   new_tokens_idx = 0
 
   last_idx = @tokens.size - 1
@@ -691,7 +691,7 @@ def preprocess_tokens!
     end
   end
 
-  @tokens = new_tokens[0...new_tokens_idx]
+  @tokens = new_tokens.first(new_tokens_idx)
 end
 
 # Pre-computed sets for faster lookup
@@ -716,14 +716,6 @@ def needs_descendant?(current, next_tok)
   CAN_END_COMPOUND.include?(current_type) && CAN_START_COMPOUND.include?(next_type)
 end
 
-def can_end_compound?(token_type)
-  CAN_END_COMPOUND.include?(token_type)
-end
-
-def can_start_compound?(token_type)
-  CAN_START_COMPOUND.include?(token_type)
-end
-
 NTH_PSEUDO_NAMES = Set['nth-child', 'nth-last-child', 'nth-of-type', 'nth-last-of-type', 'nth-col', 'nth-last-col'].freeze
 AN_PLUS_B_REGEX = /^(even|odd|[+-]?\d*n(?:[+-]\d+)?|[+-]?n(?:[+-]\d+)?|\d+)$/.freeze
 
@@ -735,16 +727,11 @@ def normalize_an_plus_b(node)
     if child&.type == :selector_list
       an_plus_b_value = extract_an_plus_b_value(child)
       if an_plus_b_value
-        node.children[0] = Node.new(:an_plus_b, an_plus_b_value, child.position)
-        node.instance_variable_set(:@descendants_cache, nil)
+        node.replace_child(0, Node.new(:an_plus_b, an_plus_b_value, child.position))
       end
     end
   end
   node.children.compact.each { |child| normalize_an_plus_b(child) }
-end
-
-def nth_pseudo?(name)
-  NTH_PSEUDO_NAMES.include?(name)
 end
 
 def extract_an_plus_b_value(selector_list_node)

@@ -41,8 +41,20 @@ module Parselly
 
       node.parent = self
       @children << node
-      @descendants_cache = nil # Invalidate cache when structure changes
+      invalidate_cache
       node
+    end
+
+    # Replaces a child node at the specified index.
+    #
+    # @param index [Integer] the index of the child to replace
+    # @param new_node [Node] the new child node
+    # @return [Node] the new node
+    def replace_child(index, new_node)
+      @children[index] = new_node
+      new_node.parent = self
+      invalidate_cache
+      new_node
     end
 
     # Returns an array of all ancestor nodes from parent to root.
@@ -258,6 +270,16 @@ module Parselly
     end
 
     private
+
+    # Invalidates the descendants cache for this node and all ancestors.
+    # This ensures that cached descendants are cleared when the tree structure changes.
+    def invalidate_cache
+      node = self
+      while node
+        node.instance_variable_set(:@descendants_cache, nil)
+        node = node.parent
+      end
+    end
 
     # Helper method to extract attribute information from an attribute_selector node.
     #
