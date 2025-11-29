@@ -98,5 +98,135 @@ module Parselly
     def inspect
       "#<#{self.class.name} type=#{type} value=#{value.inspect} children=#{children.size}>"
     end
+
+    # Checks if this node or any descendant contains an ID selector.
+    #
+    # @return [Boolean] true if an ID selector is present
+    def id?
+      type == :id_selector || descendants.any? { |node| node.type == :id_selector }
+    end
+
+    # Extracts the ID value from this node or its descendants.
+    #
+    # @return [String, nil] the ID value without the '#' prefix, or nil if no ID selector is found
+    def id
+      return value if type == :id_selector
+
+      id_node = descendants.find { |node| node.type == :id_selector }
+      id_node&.value
+    end
+
+    # Extracts all class names from this node and its descendants.
+    #
+    # @return [Array<String>] array of class names without the '.' prefix
+    def classes
+      result = []
+      result << value if type == :class_selector
+      descendants.each do |node|
+        result << node.value if node.type == :class_selector
+      end
+      result
+    end
+
+    # Checks if this node or any descendant contains an attribute selector.
+    #
+    # @return [Boolean] true if an attribute selector is present
+    def attribute?
+      type == :attribute_selector || descendants.any? { |node| node.type == :attribute_selector }
+    end
+
+    # Extracts all attribute selectors from this node and its descendants.
+    #
+    # @return [Array<Hash>] array of attribute information hashes
+    #   Each hash contains :name, :operator (optional), and :value (optional) keys
+    def attributes
+      result = []
+
+      if type == :attribute_selector
+        result << extract_attribute_info(self)
+      end
+
+      descendants.each do |node|
+        if node.type == :attribute_selector
+          result << extract_attribute_info(node)
+        end
+      end
+
+      result
+    end
+
+    # Extracts all pseudo-classes and pseudo-elements from this node and its descendants.
+    #
+    # @return [Array<String>] array of pseudo-class and pseudo-element names
+    def pseudo_classes
+      result = []
+
+      if [:pseudo_class, :pseudo_element, :pseudo_function].include?(type)
+        result << value
+      end
+
+      descendants.each do |node|
+        if [:pseudo_class, :pseudo_element, :pseudo_function].include?(node.type)
+          result << node.value
+        end
+      end
+
+      result
+    end
+
+    # Checks if this selector contains multiple different selector types.
+    # A selector is considered complex if it contains more than one type of:
+    # ID, class, attribute, pseudo-class, or type selectors.
+    #
+    # @return [Boolean] true if multiple selector types are present
+    def multiple_selectors?
+      types = []
+
+      types << :id if id?
+      types << :class unless classes.empty?
+      types << :attribute if attribute?
+      types << :pseudo unless pseudo_classes.empty?
+      types << :type if has_type_selector?
+
+      types.size > 1
+    end
+
+    private
+
+    # Helper method to extract attribute information from an attribute_selector node.
+    #
+    # @param node [Node] an attribute_selector node
+    # @return [Hash] attribute information hash
+    def extract_attribute_info(node)
+      info = {}
+
+      # Simple attribute selector like [disabled]
+      if node.value
+        info[:name] = node.value
+        return info
+      end
+
+      # Attribute selector with operator and value like [type="text"]
+      node.children.each do |child|
+        case child.type
+        when :attribute
+          info[:name] = child.value
+        when :equal_operator, :includes_operator, :dashmatch_operator,
+             :prefixmatch_operator, :suffixmatch_operator, :substringmatch_operator
+          info[:operator] = child.value
+        when :value
+          info[:value] = child.value
+        end
+      end
+
+      info
+    end
+
+    # Checks if this node or any descendant contains a type selector.
+    #
+    # @return [Boolean] true if a type selector is present
+    def has_type_selector?
+      type == :type_selector || descendants.any? { |node| node.type == :type_selector }
+    end
   end
 end

@@ -1,7 +1,5 @@
 # frozen_string_literal: true
 
-require 'parselly'
-
 RSpec.describe Parselly::Lexer do
   let(:lexer) { Parselly::Lexer.new(input) }
 

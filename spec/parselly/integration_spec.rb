@@ -1,7 +1,5 @@
 # frozen_string_literal: true
 
-require 'parselly'
-
 RSpec.describe 'CSS Selector Parser Integration' do
   let(:parser) { Parselly::Parser.new }
 

@@ -1,8 +1,5 @@
 # frozen_string_literal: true
 
-require 'rspec'
-require 'parselly'
-
 RSpec.describe Parselly do
   describe '.sanitize' do
     it 'escapes a single dash' do
