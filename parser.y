@@ -300,7 +300,7 @@ def normalize_an_plus_b(node)
       end
     end
   end
-  node.children.each { |child| normalize_an_plus_b(child) }
+  node.children.compact.each { |child| normalize_an_plus_b(child) }
 end
 
 def nth_pseudo?(name)
@@ -318,7 +318,7 @@ def extract_an_plus_b_value(selector_list_node)
   return nil unless type_sel.type == :type_selector
 
   value = type_sel.value
-  if value =~ /^(even|odd|n|n-\d+|n\+\d+|\d+n|\d+n-\d+|\d+n\+\d+)$/
+  if value =~ /^(even|odd|[+-]?\d*n(?:[+-]\d+)?|[+-]?n(?:[+-]\d+)?|\d+)$/
     value
   else
     nil

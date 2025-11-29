@@ -13,6 +13,8 @@ module Parselly
     end
 
     def add_child(node)
+      return nil if node.nil?
+
       node.parent = self
       @children << node
       node

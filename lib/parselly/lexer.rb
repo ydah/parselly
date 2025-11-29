@@ -94,10 +94,16 @@ module Parselly
       if @scanner.scan(/"([^"\\]|\\.)*"/)
         str = @scanner.matched
         update_position(str)
+        # NOTE: Escape sequences (e.g., \n, \", \\) are not processed.
+        # The raw string content is returned as-is after removing quotes.
+        # This is a known limitation for attribute values and string literals.
         str[1..-2] # Remove quotes
       elsif @scanner.scan(/'([^'\\]|\\.)*'/)
         str = @scanner.matched
         update_position(str)
+        # NOTE: Escape sequences (e.g., \n, \', \\) are not processed.
+        # The raw string content is returned as-is after removing quotes.
+        # This is a known limitation for attribute values and string literals.
         str[1..-2] # Remove quotes
       end
     end

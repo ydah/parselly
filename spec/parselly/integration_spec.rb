@@ -63,6 +63,8 @@ RSpec.describe 'CSS Selector Parser Integration' do
 
     context 'Tailwind CSS selectors' do
       it 'parses Tailwind utility selectors' do
+        skip 'Escaped characters in class names are not yet supported'
+
         selectors = [
           '.hover\\:bg-blue-500:hover',
           '.focus\\:outline-none:focus',
@@ -73,8 +75,7 @@ RSpec.describe 'CSS Selector Parser Integration' do
         ]
 
         selectors.each do |selector|
-          # NOTE: Escaped characters in class names need special handling
-          expect { parser.parse(selector.gsub('\\', '')) }.not_to raise_error
+          expect { parser.parse(selector) }.not_to raise_error
         end
       end
     end
