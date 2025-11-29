@@ -691,7 +691,7 @@ def preprocess_tokens!
     end
   end
 
-  @tokens = new_tokens.compact!
+  @tokens = new_tokens[0...new_tokens_idx]
 end
 
 # Pre-computed sets for faster lookup
@@ -736,6 +736,7 @@ def normalize_an_plus_b(node)
       an_plus_b_value = extract_an_plus_b_value(child)
       if an_plus_b_value
         node.children[0] = Node.new(:an_plus_b, an_plus_b_value, child.position)
+        node.instance_variable_set(:@descendants_cache, nil)
       end
     end
   end
