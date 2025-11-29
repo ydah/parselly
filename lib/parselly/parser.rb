@@ -653,11 +653,12 @@ end
 end
 ###### racc/parser.rb end
 
+require 'set'
 
 module Parselly
   class Parser < Racc::Parser
 
-module_eval(<<'...end parser.y/module_eval...', 'parser.y', 263)
+module_eval(<<'...end parser.y/module_eval...', 'parser.y', 264)
 def parse(input)
   @lexer = Parselly::Lexer.new(input)
   @tokens = @lexer.tokenize
@@ -670,21 +671,34 @@ def parse(input)
 end
 
 def preprocess_tokens!
-  new_tokens = []
-  i = 0
-  while i < @tokens.size
-    token = @tokens[i]
-    next_token = @tokens[i + 1]
-    new_tokens << token
-    if next_token && needs_descendant?(token, next_token)
-      pos = { line: token[2][:line], column: token[2][:column] }
-      new_tokens << [:DESCENDANT, ' ', pos]
+  return if @tokens.size <= 1
+
+  new_tokens = Array.new(@tokens.size * 2) # Pre-allocate with estimated size
+  new_tokens_idx = 0
+
+  last_idx = @tokens.size - 1
+  @tokens.each_with_index do |token, i|
+    new_tokens[new_tokens_idx] = token
+    new_tokens_idx += 1
+
+    if i < last_idx
+      next_token = @tokens[i + 1]
+      if needs_descendant?(token, next_token)
+        pos = { line: token[2][:line], column: token[2][:column] }
+        new_tokens[new_tokens_idx] = [:DESCENDANT, ' ', pos]
+        new_tokens_idx += 1
+      end
     end
-    i += 1
   end
 
-  @tokens = new_tokens
+  @tokens = new_tokens.compact!
 end
+
+# Pre-computed sets for faster lookup
+CAN_END_COMPOUND = Set[:IDENT, :STAR, :RPAREN, :RBRACKET].freeze
+CAN_START_COMPOUND = Set[:IDENT, :STAR, :DOT, :HASH, :LBRACKET, :COLON].freeze
+TYPE_SELECTOR_TYPES = Set[:IDENT, :STAR].freeze
+SUBCLASS_SELECTOR_TYPES = Set[:DOT, :HASH, :LBRACKET, :COLON].freeze
 
 # Insert DESCENDANT combinator if:
 # - Current token can end a compound selector
@@ -695,33 +709,30 @@ def needs_descendant?(current, next_tok)
   current_type = current[0]
   next_type = next_tok[0]
 
-  can_end = can_end_compound?(current_type)
-  can_start = can_start_compound?(next_type)
-
   # Type selector followed by subclass selector = same compound
-  if [:IDENT, :STAR].include?(current_type) &&
-     [:DOT, :HASH, :LBRACKET, :COLON].include?(next_type)
-    return false
-  end
+  return false if TYPE_SELECTOR_TYPES.include?(current_type) &&
+                  SUBCLASS_SELECTOR_TYPES.include?(next_type)
 
-  can_end && can_start
+  CAN_END_COMPOUND.include?(current_type) && CAN_START_COMPOUND.include?(next_type)
 end
 
 def can_end_compound?(token_type)
-  [:IDENT, :STAR, :RPAREN, :RBRACKET].include?(token_type)
+  CAN_END_COMPOUND.include?(token_type)
 end
 
 def can_start_compound?(token_type)
-  # Type selectors and subclass selectors can start a compound selector
-  [:IDENT, :STAR, :DOT, :HASH, :LBRACKET, :COLON].include?(token_type)
+  CAN_START_COMPOUND.include?(token_type)
 end
+
+NTH_PSEUDO_NAMES = Set['nth-child', 'nth-last-child', 'nth-of-type', 'nth-last-of-type', 'nth-col', 'nth-last-col'].freeze
+AN_PLUS_B_REGEX = /^(even|odd|[+-]?\d*n(?:[+-]\d+)?|[+-]?n(?:[+-]\d+)?|\d+)$/.freeze
 
 def normalize_an_plus_b(node)
   return unless node.respond_to?(:children) && node.children
 
-  if node.type == :pseudo_function && nth_pseudo?(node.value)
+  if node.type == :pseudo_function && NTH_PSEUDO_NAMES.include?(node.value)
     child = node.children.first
-    if child && child.type == :selector_list
+    if child&.type == :selector_list
       an_plus_b_value = extract_an_plus_b_value(child)
       if an_plus_b_value
         node.children[0] = Node.new(:an_plus_b, an_plus_b_value, child.position)
@@ -732,25 +743,20 @@ def normalize_an_plus_b(node)
 end
 
 def nth_pseudo?(name)
-  %w[nth-child nth-last-child nth-of-type nth-last-of-type nth-col nth-last-col].include?(name)
+  NTH_PSEUDO_NAMES.include?(name)
 end
 
 def extract_an_plus_b_value(selector_list_node)
   return nil unless selector_list_node.children.size == 1
 
   seq = selector_list_node.children.first
-  return nil unless seq.type == :simple_selector_sequence
-  return nil unless seq.children.size == 1
+  return nil unless seq.type == :simple_selector_sequence && seq.children.size == 1
 
   type_sel = seq.children.first
   return nil unless type_sel.type == :type_selector
 
   value = type_sel.value
-  if value =~ /^(even|odd|[+-]?\d*n(?:[+-]\d+)?|[+-]?n(?:[+-]\d+)?|\d+)$/
-    value
-  else
-    nil
-  end
+  value if value =~ AN_PLUS_B_REGEX
 end
 
 def next_token

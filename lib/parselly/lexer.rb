@@ -31,6 +31,23 @@ module Parselly
       '*=' => :SUBSTRINGMATCH
     }.freeze
 
+    # Pre-compiled regular expressions for better performance
+    MULTI_CHAR_OPERATORS = [
+      [/~=/, :INCLUDES],
+      [/\|=/, :DASHMATCH],
+      [/\^=/, :PREFIXMATCH],
+      [/\$=/, :SUFFIXMATCH],
+      [/\*=/, :SUBSTRINGMATCH]
+    ].freeze
+
+    SINGLE_CHAR_OPERATOR_REGEX = /[>+~\[\]():,.#*=-]/.freeze
+    WHITESPACE_REGEX = /[ \t\n\r]+/.freeze
+    STRING_DOUBLE_REGEX = /"([^"\\]|\\.)*"/.freeze
+    STRING_SINGLE_REGEX = /'([^'\\]|\\.)*'/.freeze
+    IDENTIFIER_REGEX = /(?:--|-?[a-zA-Z_])(?:[\w-]|\\[^\n\r\f])*/.freeze
+    NUMBER_REGEX = /\d+(\.\d+)?/.freeze
+    ESCAPE_REGEX = /\\(.)/.freeze
+
     attr_reader :line, :column
 
     def initialize(input)
@@ -68,24 +85,29 @@ module Parselly
     private
 
     def skip_whitespace
-      while @scanner.scan(/[ \t\n\r]+/)
-        @scanner.matched.each_char do |char|
-          update_position(char)
+      while @scanner.scan(WHITESPACE_REGEX)
+        matched = @scanner.matched
+        newline_count = matched.count("\n")
+        if newline_count > 0
+          @line += newline_count
+          @column = matched.size - matched.rindex("\n")
+        else
+          @column += matched.size
         end
       end
     end
 
     def scan_operator
       # Check multi-character operators first
-      ['~=', '|=', '^=', '$=', '*='].each do |op|
-        if @scanner.scan(/#{Regexp.escape(op)}/)
+      MULTI_CHAR_OPERATORS.each do |regex, token|
+        if @scanner.scan(regex)
           update_position(@scanner.matched)
-          return TOKENS[op]
+          return token
         end
       end
 
       # Single character operators
-      return unless @scanner.scan(/[>+~\[\]():,.#*=-]/)
+      return unless @scanner.scan(SINGLE_CHAR_OPERATOR_REGEX)
 
       char = @scanner.matched
       update_position(char)
@@ -99,11 +121,11 @@ module Parselly
     # as raw text for simplicity. Identifiers process escapes to support patterns
     # like .hover\:bg-blue-500, but strings in attributes don't require this.
     def scan_string
-      if @scanner.scan(/"([^"\\]|\\.)*"/)
+      if @scanner.scan(STRING_DOUBLE_REGEX)
         str = @scanner.matched
         update_position(str)
         str[1..-2] # Remove quotes
-      elsif @scanner.scan(/'([^'\\]|\\.)*'/)
+      elsif @scanner.scan(STRING_SINGLE_REGEX)
         str = @scanner.matched
         update_position(str)
         str[1..-2] # Remove quotes
@@ -118,16 +140,16 @@ module Parselly
       # While custom properties are technically only valid in property contexts (not selectors),
       # this parser accepts them as a superset of valid CSS for flexibility. In practice,
       # selectors like .--invalid-class would parse but aren't valid CSS selectors.
-      return unless @scanner.scan(/(?:--|-?[a-zA-Z_])(?:[\w-]|\\[^\n\r\f])*/)
+      return unless @scanner.scan(IDENTIFIER_REGEX)
 
       ident = @scanner.matched
       update_position(ident)
       # Remove backslashes from escaped characters
-      ident.gsub(/\\(.)/, '\1')
+      ident.gsub(ESCAPE_REGEX, '\1')
     end
 
     def scan_number
-      return unless @scanner.scan(/\d+(\.\d+)?/)
+      return unless @scanner.scan(NUMBER_REGEX)
 
       num = @scanner.matched
       update_position(num)

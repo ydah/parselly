@@ -29,6 +29,7 @@ module Parselly
       @children = []
       @parent = nil
       @position = position
+      @descendants_cache = nil
     end
 
     # Adds a child node to this node.
@@ -40,6 +41,7 @@ module Parselly
 
       node.parent = self
       @children << node
+      @descendants_cache = nil # Invalidate cache when structure changes
       node
     end
 
@@ -60,12 +62,16 @@ module Parselly
     #
     # @return [Array<Node>] array of all descendant nodes
     def descendants
-      result = []
-      @children.each do |child|
-        result << child
-        result.concat(child.descendants)
+      return @descendants_cache if @descendants_cache
+
+      @descendants_cache = []
+      queue = @children.dup
+      until queue.empty?
+        node = queue.shift
+        @descendants_cache << node
+        queue.concat(node.children) unless node.children.empty?
       end
-      result
+      @descendants_cache
     end
 
     # Returns an array of sibling nodes (excluding self).
@@ -150,7 +156,8 @@ module Parselly
     #
     # @return [Boolean] true if an ID selector is present
     def id?
-      type == :id_selector || descendants.any? { |node| node.type == :id_selector }
+      return true if type == :id_selector
+      descendants.any? { |node| node.type == :id_selector }
     end
 
     # Extracts the ID value from this node or its descendants.
@@ -159,8 +166,10 @@ module Parselly
     def id
       return value if type == :id_selector
 
-      id_node = descendants.find { |node| node.type == :id_selector }
-      id_node&.value
+      descendants.each do |node|
+        return node.value if node.type == :id_selector
+      end
+      nil
     end
 
     # Extracts all class names from this node and its descendants.
@@ -179,7 +188,8 @@ module Parselly
     #
     # @return [Boolean] true if an attribute selector is present
     def attribute?
-      type == :attribute_selector || descendants.any? { |node| node.type == :attribute_selector }
+      return true if type == :attribute_selector
+      descendants.any? { |node| node.type == :attribute_selector }
     end
 
     # Extracts all attribute selectors from this node and its descendants.
@@ -243,7 +253,8 @@ module Parselly
     #
     # @return [Boolean] true if a type selector is present
     def type_selector?
-      type == :type_selector || descendants.any? { |node| node.type == :type_selector }
+      return true if type == :type_selector
+      descendants.any? { |node| node.type == :type_selector }
     end
 
     private
