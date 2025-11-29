@@ -11,11 +11,14 @@ class Parselly::Parser
         PREFIXMATCH SUFFIXMATCH SUBSTRINGMATCH
         MINUS
 
-  # Precedence rules to resolve conflicts
+  # Precedence rules to resolve shift/reduce conflicts in an_plus_b grammar
+  # These rules ensure that in patterns like "2n+1" or "n-3", the operators
+  # (+/-) are shifted rather than reducing early. This allows proper parsing
+  # of An+B notation used in :nth-child() and similar pseudo-classes.
   # Lower precedence comes first
   prechigh
     left ADJACENT MINUS  # In an_plus_b context, shift these operators
-    nonassoc IDENT       # type_selector should have lower precedence
+    nonassoc IDENT       # Prevent premature reduction when IDENT follows NUMBER
   preclow
 rule
   selector_list
@@ -161,6 +164,7 @@ rule
     ;
 
   an_plus_b
+    # Positive coefficient cases
     : NUMBER IDENT ADJACENT NUMBER
       {
         # Handle 'An+B' like '2n+1'
@@ -186,6 +190,7 @@ rule
         # Handle 'n-B' like 'n-3'
         result = Node.new(:an_plus_b, "#{val[0]}-#{val[2]}", @current_position)
       }
+    # Negative coefficient cases
     | MINUS NUMBER IDENT ADJACENT NUMBER
       {
         # Handle '-An+B' like '-2n+1'
@@ -216,6 +221,7 @@ rule
         # Handle '-n' or composite like '-n+3' (when '+3' is part of IDENT)
         result = Node.new(:an_plus_b, "-#{val[1]}", @current_position)
       }
+    # Simple cases
     | NUMBER
       {
         # Handle just a number like '3'

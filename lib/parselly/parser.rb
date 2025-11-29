@@ -657,7 +657,7 @@ end
 module Parselly
   class Parser < Racc::Parser
 
-module_eval(<<'...end parser.y/module_eval...', 'parser.y', 249)
+module_eval(<<'...end parser.y/module_eval...', 'parser.y', 255)
 def parse(input)
   @lexer = Parselly::Lexer.new(input)
   @tokens = @lexer.tokenize
@@ -1004,28 +1004,28 @@ Racc_debug_parser = true
 
 # reduce 0 omitted
 
-module_eval(<<'.,.,', 'parser.y', 22)
+module_eval(<<'.,.,', 'parser.y', 25)
   def _reduce_1(val, _values, result)
      result = Node.new(:selector_list, nil, @current_position); result.add_child(val[0])
     result
   end
 .,.,
 
-module_eval(<<'.,.,', 'parser.y', 24)
+module_eval(<<'.,.,', 'parser.y', 27)
   def _reduce_2(val, _values, result)
      result = val[0]; result.add_child(val[2])
     result
   end
 .,.,
 
-module_eval(<<'.,.,', 'parser.y', 29)
+module_eval(<<'.,.,', 'parser.y', 32)
   def _reduce_3(val, _values, result)
      result = val[0]
     result
   end
 .,.,
 
-module_eval(<<'.,.,', 'parser.y', 32)
+module_eval(<<'.,.,', 'parser.y', 35)
   def _reduce_4(val, _values, result)
             result = Node.new(:selector, nil, val[0].position)
         result.add_child(val[0])
@@ -1036,35 +1036,35 @@ module_eval(<<'.,.,', 'parser.y', 32)
   end
 .,.,
 
-module_eval(<<'.,.,', 'parser.y', 41)
+module_eval(<<'.,.,', 'parser.y', 44)
   def _reduce_5(val, _values, result)
      result = Node.new(:child_combinator, '>', @current_position)
     result
   end
 .,.,
 
-module_eval(<<'.,.,', 'parser.y', 43)
+module_eval(<<'.,.,', 'parser.y', 46)
   def _reduce_6(val, _values, result)
      result = Node.new(:adjacent_combinator, '+', @current_position)
     result
   end
 .,.,
 
-module_eval(<<'.,.,', 'parser.y', 45)
+module_eval(<<'.,.,', 'parser.y', 48)
   def _reduce_7(val, _values, result)
      result = Node.new(:sibling_combinator, '~', @current_position)
     result
   end
 .,.,
 
-module_eval(<<'.,.,', 'parser.y', 47)
+module_eval(<<'.,.,', 'parser.y', 50)
   def _reduce_8(val, _values, result)
      result = Node.new(:descendant_combinator, ' ', @current_position)
     result
   end
 .,.,
 
-module_eval(<<'.,.,', 'parser.y', 53)
+module_eval(<<'.,.,', 'parser.y', 56)
   def _reduce_9(val, _values, result)
             result = Node.new(:simple_selector_sequence, nil, val[0].position)
         result.add_child(val[0])
@@ -1074,105 +1074,105 @@ module_eval(<<'.,.,', 'parser.y', 53)
   end
 .,.,
 
-module_eval(<<'.,.,', 'parser.y', 61)
+module_eval(<<'.,.,', 'parser.y', 64)
   def _reduce_10(val, _values, result)
      result = val[0]
     result
   end
 .,.,
 
-module_eval(<<'.,.,', 'parser.y', 63)
+module_eval(<<'.,.,', 'parser.y', 66)
   def _reduce_11(val, _values, result)
      result = val[0]
     result
   end
 .,.,
 
-module_eval(<<'.,.,', 'parser.y', 68)
+module_eval(<<'.,.,', 'parser.y', 71)
   def _reduce_12(val, _values, result)
      result = []
     result
   end
 .,.,
 
-module_eval(<<'.,.,', 'parser.y', 70)
+module_eval(<<'.,.,', 'parser.y', 73)
   def _reduce_13(val, _values, result)
      result = val[0]; result << val[1]
     result
   end
 .,.,
 
-module_eval(<<'.,.,', 'parser.y', 75)
+module_eval(<<'.,.,', 'parser.y', 78)
   def _reduce_14(val, _values, result)
      result = Node.new(:type_selector, val[0], @current_position)
     result
   end
 .,.,
 
-module_eval(<<'.,.,', 'parser.y', 77)
+module_eval(<<'.,.,', 'parser.y', 80)
   def _reduce_15(val, _values, result)
      result = Node.new(:universal_selector, '*', @current_position)
     result
   end
 .,.,
 
-module_eval(<<'.,.,', 'parser.y', 82)
+module_eval(<<'.,.,', 'parser.y', 85)
   def _reduce_16(val, _values, result)
      result = val[0]
     result
   end
 .,.,
 
-module_eval(<<'.,.,', 'parser.y', 84)
+module_eval(<<'.,.,', 'parser.y', 87)
   def _reduce_17(val, _values, result)
      result = val[0]
     result
   end
 .,.,
 
-module_eval(<<'.,.,', 'parser.y', 86)
+module_eval(<<'.,.,', 'parser.y', 89)
   def _reduce_18(val, _values, result)
      result = val[0]
     result
   end
 .,.,
 
-module_eval(<<'.,.,', 'parser.y', 88)
+module_eval(<<'.,.,', 'parser.y', 91)
   def _reduce_19(val, _values, result)
      result = val[0]
     result
   end
 .,.,
 
-module_eval(<<'.,.,', 'parser.y', 90)
+module_eval(<<'.,.,', 'parser.y', 93)
   def _reduce_20(val, _values, result)
      result = val[0]
     result
   end
 .,.,
 
-module_eval(<<'.,.,', 'parser.y', 95)
+module_eval(<<'.,.,', 'parser.y', 98)
   def _reduce_21(val, _values, result)
      result = Node.new(:id_selector, val[1], @current_position)
     result
   end
 .,.,
 
-module_eval(<<'.,.,', 'parser.y', 100)
+module_eval(<<'.,.,', 'parser.y', 103)
   def _reduce_22(val, _values, result)
      result = Node.new(:class_selector, val[1], @current_position)
     result
   end
 .,.,
 
-module_eval(<<'.,.,', 'parser.y', 105)
+module_eval(<<'.,.,', 'parser.y', 108)
   def _reduce_23(val, _values, result)
      result = Node.new(:attribute_selector, val[1], @current_position)
     result
   end
 .,.,
 
-module_eval(<<'.,.,', 'parser.y', 108)
+module_eval(<<'.,.,', 'parser.y', 111)
   def _reduce_24(val, _values, result)
             result = Node.new(:attribute_selector, nil, @current_position)
         result.add_child(Node.new(:attribute, val[1], @current_position))
@@ -1183,7 +1183,7 @@ module_eval(<<'.,.,', 'parser.y', 108)
   end
 .,.,
 
-module_eval(<<'.,.,', 'parser.y', 115)
+module_eval(<<'.,.,', 'parser.y', 118)
   def _reduce_25(val, _values, result)
             result = Node.new(:attribute_selector, nil, @current_position)
         result.add_child(Node.new(:attribute, val[1], @current_position))
@@ -1194,56 +1194,56 @@ module_eval(<<'.,.,', 'parser.y', 115)
   end
 .,.,
 
-module_eval(<<'.,.,', 'parser.y', 124)
+module_eval(<<'.,.,', 'parser.y', 127)
   def _reduce_26(val, _values, result)
      result = Node.new(:equal_operator, '=', @current_position)
     result
   end
 .,.,
 
-module_eval(<<'.,.,', 'parser.y', 126)
+module_eval(<<'.,.,', 'parser.y', 129)
   def _reduce_27(val, _values, result)
      result = Node.new(:includes_operator, '~=', @current_position)
     result
   end
 .,.,
 
-module_eval(<<'.,.,', 'parser.y', 128)
+module_eval(<<'.,.,', 'parser.y', 131)
   def _reduce_28(val, _values, result)
      result = Node.new(:dashmatch_operator, '|=', @current_position)
     result
   end
 .,.,
 
-module_eval(<<'.,.,', 'parser.y', 130)
+module_eval(<<'.,.,', 'parser.y', 133)
   def _reduce_29(val, _values, result)
      result = Node.new(:prefixmatch_operator, '^=', @current_position)
     result
   end
 .,.,
 
-module_eval(<<'.,.,', 'parser.y', 132)
+module_eval(<<'.,.,', 'parser.y', 135)
   def _reduce_30(val, _values, result)
      result = Node.new(:suffixmatch_operator, '$=', @current_position)
     result
   end
 .,.,
 
-module_eval(<<'.,.,', 'parser.y', 134)
+module_eval(<<'.,.,', 'parser.y', 137)
   def _reduce_31(val, _values, result)
      result = Node.new(:substringmatch_operator, '*=', @current_position)
     result
   end
 .,.,
 
-module_eval(<<'.,.,', 'parser.y', 139)
+module_eval(<<'.,.,', 'parser.y', 142)
   def _reduce_32(val, _values, result)
      result = Node.new(:pseudo_class, val[1], @current_position)
     result
   end
 .,.,
 
-module_eval(<<'.,.,', 'parser.y', 142)
+module_eval(<<'.,.,', 'parser.y', 145)
   def _reduce_33(val, _values, result)
             fn = Node.new(:pseudo_function, val[1], @current_position)
         fn.add_child(val[3])
@@ -1253,35 +1253,35 @@ module_eval(<<'.,.,', 'parser.y', 142)
   end
 .,.,
 
-module_eval(<<'.,.,', 'parser.y', 150)
+module_eval(<<'.,.,', 'parser.y', 153)
   def _reduce_34(val, _values, result)
      result = Node.new(:pseudo_element, val[2], @current_position)
     result
   end
 .,.,
 
-module_eval(<<'.,.,', 'parser.y', 155)
+module_eval(<<'.,.,', 'parser.y', 158)
   def _reduce_35(val, _values, result)
      result = Node.new(:argument, val[0], @current_position)
     result
   end
 .,.,
 
-module_eval(<<'.,.,', 'parser.y', 157)
+module_eval(<<'.,.,', 'parser.y', 160)
   def _reduce_36(val, _values, result)
      result = val[0]
     result
   end
 .,.,
 
-module_eval(<<'.,.,', 'parser.y', 159)
+module_eval(<<'.,.,', 'parser.y', 162)
   def _reduce_37(val, _values, result)
      result = val[0]
     result
   end
 .,.,
 
-module_eval(<<'.,.,', 'parser.y', 165)
+module_eval(<<'.,.,', 'parser.y', 169)
   def _reduce_38(val, _values, result)
             # Handle 'An+B' like '2n+1'
         result = Node.new(:an_plus_b, "#{val[0]}#{val[1]}+#{val[3]}", @current_position)
@@ -1290,7 +1290,7 @@ module_eval(<<'.,.,', 'parser.y', 165)
   end
 .,.,
 
-module_eval(<<'.,.,', 'parser.y', 170)
+module_eval(<<'.,.,', 'parser.y', 174)
   def _reduce_39(val, _values, result)
             # Handle 'An-B' like '2n-1'
         result = Node.new(:an_plus_b, "#{val[0]}#{val[1]}-#{val[3]}", @current_position)
@@ -1299,7 +1299,7 @@ module_eval(<<'.,.,', 'parser.y', 170)
   end
 .,.,
 
-module_eval(<<'.,.,', 'parser.y', 175)
+module_eval(<<'.,.,', 'parser.y', 179)
   def _reduce_40(val, _values, result)
             # Handle 'An' like '2n' or composite like '2n-1' (when '-1' is part of IDENT)
         result = Node.new(:an_plus_b, "#{val[0]}#{val[1]}", @current_position)
@@ -1308,7 +1308,7 @@ module_eval(<<'.,.,', 'parser.y', 175)
   end
 .,.,
 
-module_eval(<<'.,.,', 'parser.y', 180)
+module_eval(<<'.,.,', 'parser.y', 184)
   def _reduce_41(val, _values, result)
             # Handle 'n+B' like 'n+5' or keywords followed by offset (rare but valid)
         result = Node.new(:an_plus_b, "#{val[0]}+#{val[2]}", @current_position)
@@ -1317,7 +1317,7 @@ module_eval(<<'.,.,', 'parser.y', 180)
   end
 .,.,
 
-module_eval(<<'.,.,', 'parser.y', 185)
+module_eval(<<'.,.,', 'parser.y', 189)
   def _reduce_42(val, _values, result)
             # Handle 'n-B' like 'n-3'
         result = Node.new(:an_plus_b, "#{val[0]}-#{val[2]}", @current_position)
@@ -1326,7 +1326,7 @@ module_eval(<<'.,.,', 'parser.y', 185)
   end
 .,.,
 
-module_eval(<<'.,.,', 'parser.y', 190)
+module_eval(<<'.,.,', 'parser.y', 195)
   def _reduce_43(val, _values, result)
             # Handle '-An+B' like '-2n+1'
         result = Node.new(:an_plus_b, "-#{val[1]}#{val[2]}+#{val[4]}", @current_position)
@@ -1335,7 +1335,7 @@ module_eval(<<'.,.,', 'parser.y', 190)
   end
 .,.,
 
-module_eval(<<'.,.,', 'parser.y', 195)
+module_eval(<<'.,.,', 'parser.y', 200)
   def _reduce_44(val, _values, result)
             # Handle '-An-B' like '-2n-1'
         result = Node.new(:an_plus_b, "-#{val[1]}#{val[2]}-#{val[4]}", @current_position)
@@ -1344,7 +1344,7 @@ module_eval(<<'.,.,', 'parser.y', 195)
   end
 .,.,
 
-module_eval(<<'.,.,', 'parser.y', 200)
+module_eval(<<'.,.,', 'parser.y', 205)
   def _reduce_45(val, _values, result)
             # Handle '-An' like '-2n' or composite like '-2n+1' (when '+1' is part of IDENT)
         result = Node.new(:an_plus_b, "-#{val[1]}#{val[2]}", @current_position)
@@ -1353,7 +1353,7 @@ module_eval(<<'.,.,', 'parser.y', 200)
   end
 .,.,
 
-module_eval(<<'.,.,', 'parser.y', 205)
+module_eval(<<'.,.,', 'parser.y', 210)
   def _reduce_46(val, _values, result)
             # Handle '-n+B' like '-n+3'
         result = Node.new(:an_plus_b, "-#{val[1]}+#{val[3]}", @current_position)
@@ -1362,7 +1362,7 @@ module_eval(<<'.,.,', 'parser.y', 205)
   end
 .,.,
 
-module_eval(<<'.,.,', 'parser.y', 210)
+module_eval(<<'.,.,', 'parser.y', 215)
   def _reduce_47(val, _values, result)
             # Handle '-n-B' like '-n-2'
         result = Node.new(:an_plus_b, "-#{val[1]}-#{val[3]}", @current_position)
@@ -1371,7 +1371,7 @@ module_eval(<<'.,.,', 'parser.y', 210)
   end
 .,.,
 
-module_eval(<<'.,.,', 'parser.y', 215)
+module_eval(<<'.,.,', 'parser.y', 220)
   def _reduce_48(val, _values, result)
             # Handle '-n' or composite like '-n+3' (when '+3' is part of IDENT)
         result = Node.new(:an_plus_b, "-#{val[1]}", @current_position)
@@ -1380,7 +1380,7 @@ module_eval(<<'.,.,', 'parser.y', 215)
   end
 .,.,
 
-module_eval(<<'.,.,', 'parser.y', 220)
+module_eval(<<'.,.,', 'parser.y', 226)
   def _reduce_49(val, _values, result)
             # Handle just a number like '3'
         result = Node.new(:an_plus_b, val[0].to_s, @current_position)
@@ -1389,28 +1389,28 @@ module_eval(<<'.,.,', 'parser.y', 220)
   end
 .,.,
 
-module_eval(<<'.,.,', 'parser.y', 227)
+module_eval(<<'.,.,', 'parser.y', 233)
   def _reduce_50(val, _values, result)
      result = Node.new(:selector_list, nil, @current_position); result.add_child(val[0])
     result
   end
 .,.,
 
-module_eval(<<'.,.,', 'parser.y', 229)
+module_eval(<<'.,.,', 'parser.y', 235)
   def _reduce_51(val, _values, result)
      result = val[0]; result.add_child(val[2])
     result
   end
 .,.,
 
-module_eval(<<'.,.,', 'parser.y', 234)
+module_eval(<<'.,.,', 'parser.y', 240)
   def _reduce_52(val, _values, result)
      result = val[0]
     result
   end
 .,.,
 
-module_eval(<<'.,.,', 'parser.y', 237)
+module_eval(<<'.,.,', 'parser.y', 243)
   def _reduce_53(val, _values, result)
             result = Node.new(:selector, nil, val[0].position)
         result.add_child(val[0])

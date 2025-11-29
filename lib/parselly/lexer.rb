@@ -92,20 +92,20 @@ module Parselly
       TOKENS[char]
     end
 
+    # NOTE: Unlike identifiers (where backslash escapes are processed),
+    # escape sequences inside strings (e.g., \n, \", \', \\) are NOT processed.
+    # The raw string content is returned as-is after removing outer quotes.
+    # This is a known limitation for attribute values, as strings are treated
+    # as raw text for simplicity. Identifiers process escapes to support patterns
+    # like .hover\:bg-blue-500, but strings in attributes don't require this.
     def scan_string
       if @scanner.scan(/"([^"\\]|\\.)*"/)
         str = @scanner.matched
         update_position(str)
-        # NOTE: Escape sequences inside strings (e.g., \n, \", \\) are not processed.
-        # The raw string content is returned as-is after removing quotes.
-        # This is a known limitation for attribute values.
         str[1..-2] # Remove quotes
       elsif @scanner.scan(/'([^'\\]|\\.)*'/)
         str = @scanner.matched
         update_position(str)
-        # NOTE: Escape sequences inside strings (e.g., \n, \', \\) are not processed.
-        # The raw string content is returned as-is after removing quotes.
-        # This is a known limitation for attribute values.
         str[1..-2] # Remove quotes
       end
     end
@@ -113,7 +113,11 @@ module Parselly
     def scan_identifier
       # Match identifiers with optional escape sequences
       # CSS allows \<any-char> as escape in identifiers (e.g., .hover\:bg-blue-500)
-      # Also support CSS custom properties starting with -- (e.g., --my-variable)
+      #
+      # NOTE: This also accepts CSS custom properties starting with -- (e.g., --my-variable).
+      # While custom properties are technically only valid in property contexts (not selectors),
+      # this parser accepts them as a superset of valid CSS for flexibility. In practice,
+      # selectors like .--invalid-class would parse but aren't valid CSS selectors.
       return unless @scanner.scan(/(?:--|-?[a-zA-Z_])(?:[\w-]|\\[^\n\r\f])*/)
 
       ident = @scanner.matched

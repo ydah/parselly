@@ -139,6 +139,32 @@ RSpec.describe 'CSS Selector Parser Integration' do
         end
       end
 
+      it 'creates correct AST for An+B keyword patterns' do
+        # Test 'even' keyword
+        ast = parser.parse(':nth-child(even)')
+        seq = ast.children.first
+        pseudo_func = seq.children.find { |c| c.type == :pseudo_function }
+        an_plus_b = pseudo_func.children.first
+        expect(an_plus_b.type).to eq(:an_plus_b)
+        expect(an_plus_b.value).to eq('even')
+
+        # Test 'odd' keyword
+        ast = parser.parse(':nth-child(odd)')
+        seq = ast.children.first
+        pseudo_func = seq.children.find { |c| c.type == :pseudo_function }
+        an_plus_b = pseudo_func.children.first
+        expect(an_plus_b.type).to eq(:an_plus_b)
+        expect(an_plus_b.value).to eq('odd')
+
+        # Test 'n' keyword
+        ast = parser.parse(':nth-child(n)')
+        seq = ast.children.first
+        pseudo_func = seq.children.find { |c| c.type == :pseudo_function }
+        an_plus_b = pseudo_func.children.first
+        expect(an_plus_b.type).to eq(:an_plus_b)
+        expect(an_plus_b.value).to eq('n')
+      end
+
       it 'parses :nth-last-child with An+B patterns' do
         selectors = [
           ':nth-last-child(1)',
