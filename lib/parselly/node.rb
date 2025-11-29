@@ -99,6 +99,53 @@ module Parselly
       "#<#{self.class.name} type=#{type} value=#{value.inspect} children=#{children.size}>"
     end
 
+    # Converts the AST node back to a CSS selector string.
+    #
+    # @return [String] the CSS selector string representation of this node
+    def to_selector
+      case type
+      when :selector_list
+        children.map(&:to_selector).join(', ')
+      when :selector
+        children.map(&:to_selector).join
+      when :simple_selector_sequence
+        children.map(&:to_selector).join
+      when :type_selector
+        value
+      when :universal_selector
+        value
+      when :id_selector
+        "##{value}"
+      when :class_selector
+        ".#{value}"
+      when :attribute_selector
+        build_attribute_selector
+      when :pseudo_class
+        ":#{value}"
+      when :pseudo_element
+        "::#{value}"
+      when :pseudo_function
+        ":#{value}(#{children.map(&:to_selector).join})"
+      when :child_combinator
+        ' > '
+      when :adjacent_combinator
+        ' + '
+      when :sibling_combinator
+        ' ~ '
+      when :descendant_combinator
+        ' '
+      when :an_plus_b, :argument
+        value
+      when :attribute, :value
+        value
+      when :equal_operator, :includes_operator, :dashmatch_operator,
+           :prefixmatch_operator, :suffixmatch_operator, :substringmatch_operator
+        value
+      else
+        children.map(&:to_selector).join
+      end
+    end
+
     # Checks if this node or any descendant contains an ID selector.
     #
     # @return [Boolean] true if an ID selector is present
@@ -192,6 +239,13 @@ module Parselly
       types.size > 1
     end
 
+    # Checks if this node or any descendant contains a type selector.
+    #
+    # @return [Boolean] true if a type selector is present
+    def type_selector?
+      type == :type_selector || descendants.any? { |node| node.type == :type_selector }
+    end
+
     private
 
     # Helper method to extract attribute information from an attribute_selector node.
@@ -223,11 +277,35 @@ module Parselly
       info
     end
 
-    # Checks if this node or any descendant contains a type selector.
+    # Helper method to build an attribute selector string.
     #
-    # @return [Boolean] true if a type selector is present
-    def type_selector?
-      type == :type_selector || descendants.any? { |node| node.type == :type_selector }
+    # @return [String] the attribute selector string
+    def build_attribute_selector
+      # Simple attribute selector like [disabled]
+      return "[#{value}]" if value
+
+      # Attribute selector with operator and value like [type="text"]
+      attr_name = nil
+      operator = nil
+      attr_value = nil
+
+      children.each do |child|
+        case child.type
+        when :attribute
+          attr_name = child.value
+        when :equal_operator, :includes_operator, :dashmatch_operator,
+             :prefixmatch_operator, :suffixmatch_operator, :substringmatch_operator
+          operator = child.value
+        when :value
+          attr_value = child.value
+        end
+      end
+
+      if operator && attr_value
+        "[#{attr_name}#{operator}\"#{attr_value}\"]"
+      else
+        "[#{attr_name}]"
+      end
     end
   end
 end
