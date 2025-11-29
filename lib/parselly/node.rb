@@ -29,6 +29,7 @@ module Parselly
       @children = []
       @parent = nil
       @position = position
+      @descendants_cache = nil
     end
 
     # Adds a child node to this node.
@@ -40,7 +41,26 @@ module Parselly
 
       node.parent = self
       @children << node
+      invalidate_cache
       node
+    end
+
+    # Replaces a child node at the specified index.
+    #
+    # @param index [Integer] the index of the child to replace
+    # @param new_node [Node] the new child node
+    # @return [Node, nil] the new node, or nil if invalid parameters
+    def replace_child(index, new_node)
+      return nil if new_node.nil?
+      return nil if index < 0 || index >= @children.size
+
+      old_node = @children[index]
+      old_node.parent = nil if old_node
+
+      @children[index] = new_node
+      new_node.parent = self
+      invalidate_cache
+      new_node
     end
 
     # Returns an array of all ancestor nodes from parent to root.
@@ -60,12 +80,16 @@ module Parselly
     #
     # @return [Array<Node>] array of all descendant nodes
     def descendants
-      result = []
-      @children.each do |child|
-        result << child
-        result.concat(child.descendants)
+      return @descendants_cache if @descendants_cache
+
+      @descendants_cache = []
+      queue = @children.dup
+      until queue.empty?
+        node = queue.shift
+        @descendants_cache << node
+        queue.concat(node.children) unless node.children.empty?
       end
-      result
+      @descendants_cache
     end
 
     # Returns an array of sibling nodes (excluding self).
@@ -150,7 +174,8 @@ module Parselly
     #
     # @return [Boolean] true if an ID selector is present
     def id?
-      type == :id_selector || descendants.any? { |node| node.type == :id_selector }
+      return true if type == :id_selector
+      descendants.any? { |node| node.type == :id_selector }
     end
 
     # Extracts the ID value from this node or its descendants.
@@ -159,8 +184,10 @@ module Parselly
     def id
       return value if type == :id_selector
 
-      id_node = descendants.find { |node| node.type == :id_selector }
-      id_node&.value
+      descendants.each do |node|
+        return node.value if node.type == :id_selector
+      end
+      nil
     end
 
     # Extracts all class names from this node and its descendants.
@@ -179,7 +206,8 @@ module Parselly
     #
     # @return [Boolean] true if an attribute selector is present
     def attribute?
-      type == :attribute_selector || descendants.any? { |node| node.type == :attribute_selector }
+      return true if type == :attribute_selector
+      descendants.any? { |node| node.type == :attribute_selector }
     end
 
     # Extracts all attribute selectors from this node and its descendants.
@@ -243,10 +271,21 @@ module Parselly
     #
     # @return [Boolean] true if a type selector is present
     def type_selector?
-      type == :type_selector || descendants.any? { |node| node.type == :type_selector }
+      return true if type == :type_selector
+      descendants.any? { |node| node.type == :type_selector }
     end
 
     private
+
+    # Invalidates the descendants cache for this node and all ancestors.
+    # This ensures that cached descendants are cleared when the tree structure changes.
+    def invalidate_cache
+      node = self
+      while node
+        node.instance_variable_set(:@descendants_cache, nil)
+        node = node.parent
+      end
+    end
 
     # Helper method to extract attribute information from an attribute_selector node.
     #

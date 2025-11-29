@@ -340,7 +340,146 @@ RSpec.describe Parselly::Node do
         types = descendants.map(&:type)
         expect(types).to include(:id_selector, :class_selector)
       end
+
+      it 'caches descendants after first call' do
+        ast = parser.parse('div#myid.myclass')
+        first_call = ast.descendants
+        second_call = ast.descendants
+        expect(first_call).to be(second_call) # Same object identity
+      end
+
+      it 'returns correct descendants after add_child' do
+        parent = Parselly::Node.new(:selector_list)
+        child1 = Parselly::Node.new(:type_selector, 'div')
+        parent.add_child(child1)
+
+        expect(parent.descendants).to eq([child1])
+
+        child2 = Parselly::Node.new(:class_selector, 'myclass')
+        parent.add_child(child2)
+
+        expect(parent.descendants).to contain_exactly(child1, child2)
+      end
+
+      it 'invalidates cache when structure changes via replace_child' do
+        parent = Parselly::Node.new(:selector_list)
+        child1 = Parselly::Node.new(:type_selector, 'div')
+        parent.add_child(child1)
+
+        first_descendants = parent.descendants
+        expect(first_descendants).to eq([child1])
+
+        child2 = Parselly::Node.new(:class_selector, 'myclass')
+        parent.replace_child(0, child2)
+
+        expect(parent.descendants).to eq([child2])
+        expect(parent.descendants).not_to be(first_descendants) # Different cache
+      end
+
+      it 'invalidates ancestor caches when child is added' do
+        grandparent = Parselly::Node.new(:selector_list)
+        parent = Parselly::Node.new(:selector)
+        grandparent.add_child(parent)
+
+        # Cache descendants
+        grandparent_descendants = grandparent.descendants
+        expect(grandparent_descendants).to eq([parent])
+
+        # Add new child to parent
+        child = Parselly::Node.new(:type_selector, 'div')
+        parent.add_child(child)
+
+        # Grandparent's cache should be invalidated
+        new_grandparent_descendants = grandparent.descendants
+        expect(new_grandparent_descendants).to contain_exactly(parent, child)
+        expect(new_grandparent_descendants).not_to be(grandparent_descendants)
+      end
+
+      it 'invalidates ancestor caches when child is replaced' do
+        grandparent = Parselly::Node.new(:selector_list)
+        parent = Parselly::Node.new(:selector)
+        child1 = Parselly::Node.new(:type_selector, 'div')
+
+        grandparent.add_child(parent)
+        parent.add_child(child1)
+
+        # Cache descendants
+        grandparent_descendants = grandparent.descendants
+        expect(grandparent_descendants).to contain_exactly(parent, child1)
+
+        # Replace child in parent
+        child2 = Parselly::Node.new(:class_selector, 'myclass')
+        parent.replace_child(0, child2)
+
+        # Grandparent's cache should be invalidated
+        new_grandparent_descendants = grandparent.descendants
+        expect(new_grandparent_descendants).to contain_exactly(parent, child2)
+        expect(new_grandparent_descendants).not_to be(grandparent_descendants)
+      end
     end
+
+    describe '#replace_child' do
+      it 'returns nil when new_node is nil' do
+        parent = Parselly::Node.new(:selector_list)
+        child = Parselly::Node.new(:type_selector, 'div')
+        parent.add_child(child)
+
+        result = parent.replace_child(0, nil)
+        expect(result).to be_nil
+        expect(parent.children).to eq([child]) # Child should not be replaced
+      end
+
+      it 'returns nil when index is negative' do
+        parent = Parselly::Node.new(:selector_list)
+        child = Parselly::Node.new(:type_selector, 'div')
+        parent.add_child(child)
+
+        new_child = Parselly::Node.new(:class_selector, 'myclass')
+        result = parent.replace_child(-1, new_child)
+        expect(result).to be_nil
+        expect(parent.children).to eq([child]) # Child should not be replaced
+      end
+
+      it 'returns nil when index is out of bounds' do
+        parent = Parselly::Node.new(:selector_list)
+        child = Parselly::Node.new(:type_selector, 'div')
+        parent.add_child(child)
+
+        new_child = Parselly::Node.new(:class_selector, 'myclass')
+        result = parent.replace_child(10, new_child)
+        expect(result).to be_nil
+        expect(parent.children).to eq([child]) # Child should not be replaced
+      end
+
+      it 'clears parent reference of old child' do
+        parent = Parselly::Node.new(:selector_list)
+        old_child = Parselly::Node.new(:type_selector, 'div')
+        parent.add_child(old_child)
+
+        expect(old_child.parent).to eq(parent)
+
+        new_child = Parselly::Node.new(:class_selector, 'myclass')
+        parent.replace_child(0, new_child)
+
+        expect(old_child.parent).to be_nil
+        expect(new_child.parent).to eq(parent)
+      end
+
+      it 'successfully replaces child at valid index' do
+        parent = Parselly::Node.new(:selector_list)
+        child1 = Parselly::Node.new(:type_selector, 'div')
+        child2 = Parselly::Node.new(:id_selector, 'myid')
+        parent.add_child(child1)
+        parent.add_child(child2)
+
+        new_child = Parselly::Node.new(:class_selector, 'myclass')
+        result = parent.replace_child(0, new_child)
+
+        expect(result).to eq(new_child)
+        expect(parent.children).to eq([new_child, child2])
+      end
+    end
+
 
     describe '#siblings' do
       it 'returns empty array when no parent' do
