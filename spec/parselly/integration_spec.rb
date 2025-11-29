@@ -253,7 +253,7 @@ RSpec.describe 'CSS Selector Parser Integration' do
           an_plus_b_node = pseudo_func.children.first
 
           expect(an_plus_b_node.value).to eq(expected_value),
-            "Expected #{selector} to have An+B value '#{expected_value}', got '#{an_plus_b_node.value}'"
+                                          "Expected #{selector} to have An+B value '#{expected_value}', got '#{an_plus_b_node.value}'"
         end
       end
     end
@@ -694,7 +694,7 @@ RSpec.describe 'CSS Selector Parser Integration' do
           ast = parser.parse(selector)
           node = find_node(ast, node_type)
           expect(node&.value).to eq(expected_value),
-            "Expected #{selector} to create #{node_type} with value '#{expected_value}'"
+                                 "Expected #{selector} to create #{node_type} with value '#{expected_value}'"
         end
       end
 
@@ -712,7 +712,7 @@ RSpec.describe 'CSS Selector Parser Integration' do
           ast = parser.parse(selector)
           node = find_node(ast, node_type)
           expect(node&.value).to eq(expected_value),
-            "Expected #{selector} to create #{node_type} with value '#{expected_value}'"
+                                 "Expected #{selector} to create #{node_type} with value '#{expected_value}'"
         end
       end
 
@@ -728,7 +728,7 @@ RSpec.describe 'CSS Selector Parser Integration' do
           ast = parser.parse(selector)
           node = find_node(ast, node_type)
           expect(node&.value).to eq(expected_value),
-            "Expected #{selector} to create #{node_type} with value '#{expected_value}'"
+                                 "Expected #{selector} to create #{node_type} with value '#{expected_value}'"
         end
       end
     end

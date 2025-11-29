@@ -83,7 +83,7 @@ module Parselly
       end
 
       # Single character operators
-      return unless @scanner.scan(/[>+~\[\]():,.#*=\-]/)
+      return unless @scanner.scan(/[>+~\[\]():,.#*=-]/)
 
       char = @scanner.matched
       update_position(char)
