@@ -126,6 +126,20 @@ RSpec.describe Parselly::Node do
     end
   end
 
+  describe '#attribute_selectors' do
+    it 'extracts a simple attribute selector' do
+      ast = parser.parse('[disabled]')
+      expect(ast.attribute_selectors).to eq([{ name: 'disabled', raw_name: 'disabled' }])
+    end
+
+    it 'extracts attribute selector with operator and value' do
+      ast = parser.parse('[type="text"]')
+      expect(ast.attribute_selectors).to eq([
+        { name: 'type', raw_name: 'type', operator: '=', value: 'text', raw_value: 'text' }
+      ])
+    end
+  end
+
   describe '#pseudo_classes' do
     it 'extracts a pseudo-class' do
       ast = parser.parse(':hover')

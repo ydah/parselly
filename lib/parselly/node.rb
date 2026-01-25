@@ -231,6 +231,24 @@ module Parselly
       result
     end
 
+    # Extracts detailed attribute selector nodes from this node and its descendants.
+    #
+    # @return [Array<Hash>] array of attribute selector detail hashes
+    #   Each hash contains :name, :operator (optional), and :value (optional) keys
+    def attribute_selectors
+      result = []
+
+      if type == :attribute_selector
+        result << extract_attribute_node(self)
+      end
+
+      descendants.each do |node|
+        result << extract_attribute_node(node) if node.type == :attribute_selector
+      end
+
+      result
+    end
+
     # Extracts all pseudo-classes and pseudo-elements from this node and its descendants.
     #
     # @return [Array<String>] array of pseudo-class and pseudo-element names
@@ -311,6 +329,36 @@ module Parselly
           info[:operator] = child.value
         when :value
           info[:value] = child.value
+        end
+      end
+
+      info
+    end
+
+    # Helper method to extract detailed attribute selector data.
+    #
+    # @param node [Node] an attribute_selector node
+    # @return [Hash] attribute selector detail hash
+    def extract_attribute_node(node)
+      info = {}
+
+      if node.value
+        info[:name] = node.value
+        info[:raw_name] = node.raw_value
+        return info
+      end
+
+      node.children.each do |child|
+        case child.type
+        when :attribute
+          info[:name] = child.value
+          info[:raw_name] = child.raw_value
+        when :equal_operator, :includes_operator, :dashmatch_operator,
+             :prefixmatch_operator, :suffixmatch_operator, :substringmatch_operator
+          info[:operator] = child.value
+        when :value
+          info[:value] = child.value
+          info[:raw_value] = child.raw_value
         end
       end
 
