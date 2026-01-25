@@ -660,6 +660,7 @@ CAN_END_COMPOUND = Set[:IDENT, :STAR, :RPAREN, :RBRACKET].freeze
 CAN_START_COMPOUND = Set[:IDENT, :STAR, :DOT, :HASH, :LBRACKET, :COLON].freeze
 TYPE_SELECTOR_TYPES = Set[:IDENT, :STAR].freeze
 SUBCLASS_SELECTOR_TYPES = Set[:DOT, :HASH, :LBRACKET, :COLON].freeze
+SUBCLASS_SELECTOR_END_TYPES = Set[:IDENT, :RBRACKET, :RPAREN].freeze
 NTH_PSEUDO_NAMES = Set['nth-child', 'nth-last-child', 'nth-of-type', 'nth-last-of-type', 'nth-col', 'nth-last-col'].freeze
 AN_PLUS_B_REGEX = /^(even|odd|[+-]?\d*n(?:[+-]\d+)?|[+-]?n(?:[+-]\d+)?|\d+)$/.freeze
 
@@ -712,8 +713,11 @@ def needs_descendant?(current, next_tok)
   next_type = next_tok[0]
 
   # Type selector followed by subclass selector = same compound
-  return false if TYPE_SELECTOR_TYPES.include?(current_type) &&
-                  SUBCLASS_SELECTOR_TYPES.include?(next_type)
+  # Subclass selector followed by subclass selector = same compound
+  if SUBCLASS_SELECTOR_TYPES.include?(next_type)
+    return false if TYPE_SELECTOR_TYPES.include?(current_type) ||
+                    SUBCLASS_SELECTOR_END_TYPES.include?(current_type)
+  end
 
   CAN_END_COMPOUND.include?(current_type) && CAN_START_COMPOUND.include?(next_type)
 end

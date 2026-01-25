@@ -555,6 +555,13 @@ RSpec.describe 'CSS Selector Parser Integration' do
         expect(combinator.type).to eq(:descendant_combinator)
         expect(combinator.value).to eq(' ')
       end
+
+      it 'does not insert descendant combinator between chained attribute selectors' do
+        ast = parser.parse('button[foo][bar=baz]')
+        combinator = find_node(ast, :descendant_combinator)
+
+        expect(combinator).to be_nil
+      end
     end
 
     context 'Selector nodes' do
