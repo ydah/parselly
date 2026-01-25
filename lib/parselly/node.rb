@@ -93,6 +93,31 @@ module Parselly
       @descendants_cache
     end
 
+    # Depth-first traversal of this node and its descendants.
+    #
+    # @return [Enumerator, Node] enumerator if no block, otherwise self
+    def each
+      return enum_for(:each) unless block_given?
+
+      stack = [self]
+      until stack.empty?
+        node = stack.pop
+        yield node
+        children = node.children
+        stack.concat(children.reverse) if children && !children.empty?
+      end
+
+      self
+    end
+
+    # Finds all nodes of a given type in this subtree.
+    #
+    # @param type [Symbol] the node type to match
+    # @return [Array<Node>] array of matching nodes
+    def find_all(type)
+      each.with_object([]) { |node, acc| acc << node if node.type == type }
+    end
+
     # Returns an array of sibling nodes (excluding self).
     #
     # @return [Array<Node>] array of sibling nodes, or empty array if no parent

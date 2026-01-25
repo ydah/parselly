@@ -172,6 +172,42 @@ RSpec.describe Parselly::Node do
     end
   end
 
+  describe '#each' do
+    it 'traverses nodes in depth-first order' do
+      root = described_class.new(:root)
+      child_a = described_class.new(:child_a)
+      child_b = described_class.new(:child_b)
+      grandchild = described_class.new(:grandchild)
+
+      root.add_child(child_a)
+      root.add_child(child_b)
+      child_a.add_child(grandchild)
+
+      types = root.each.map(&:type)
+      expect(types).to eq([:root, :child_a, :grandchild, :child_b])
+    end
+
+    it 'returns an enumerator when no block is given' do
+      root = described_class.new(:root)
+      expect(root.each).to be_a(Enumerator)
+    end
+  end
+
+  describe '#find_all' do
+    it 'finds all nodes of a given type' do
+      root = described_class.new(:root)
+      node_a = described_class.new(:target)
+      node_b = described_class.new(:target)
+
+      root.add_child(node_a)
+      root.add_child(described_class.new(:other))
+      node_a.add_child(node_b)
+
+      matches = root.find_all(:target)
+      expect(matches).to contain_exactly(node_a, node_b)
+    end
+  end
+
   describe '#compound_selector?' do
     it 'returns false for a single type selector' do
       ast = parser.parse('div')
