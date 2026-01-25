@@ -22,14 +22,21 @@ module Parselly
     #
     # @param type [Symbol] the type of the node (e.g., :type_selector, :class_selector)
     # @param value [String, nil] optional value associated with the node
-    # @param position [Hash] source position with :line and :column keys
-    def initialize(type, value = nil, position = {}, raw_value: nil)
+    # @param position [Hash] source position with :line, :column, and :offset keys
+    # @param line [Integer, nil] optional line number (keyword alternative)
+    # @param column [Integer, nil] optional column number (keyword alternative)
+    # @param offset [Integer, nil] optional offset (keyword alternative)
+    def initialize(type, value = nil, position = {}, raw_value: nil, line: nil, column: nil, offset: nil)
       @type = type
       @value = value
       @raw_value = raw_value.nil? ? value : raw_value
       @children = []
       @parent = nil
-      @position = position
+      resolved_position = position.is_a?(Hash) ? position.dup : {}
+      resolved_position[:line] = line unless line.nil?
+      resolved_position[:column] = column unless column.nil?
+      resolved_position[:offset] = offset unless offset.nil?
+      @position = resolved_position
       @descendants_cache = nil
     end
 
