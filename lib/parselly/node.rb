@@ -8,7 +8,7 @@ module Parselly
   # child nodes, parent reference, and source position.
   #
   # @example Creating a simple AST node
-  #   node = Parselly::Node.new(:type_selector, 'div', { line: 1, column: 1 })
+  #   node = Parselly::Node.new(:type_selector, 'div', { line: 1, column: 1, offset: 0 })
   #   node.add_child(Parselly::Node.new(:class_selector, 'container'))
   #
   # @example Traversing the AST

@@ -293,7 +293,7 @@ def parse(input, tolerant: false)
   end
   preprocess_tokens!
   @index = 0
-  @current_position = { line: 1, column: 1 }
+  @current_position = { line: 1, column: 1, offset: 0 }
 
   if tolerant
     ast = parse_with_recovery
@@ -335,7 +335,7 @@ end
 def parse_from_tokens(tokens, suppress_errors: false)
   @tokens = tokens
   @index = 0
-  @current_position = { line: 1, column: 1 }
+  @current_position = { line: 1, column: 1, offset: 0 }
   @suppress_errors = suppress_errors
   do_parse
 ensure
@@ -378,7 +378,7 @@ def preprocess_tokens!
     if i < last_idx
       next_token = @tokens[i + 1]
       if needs_descendant?(token, next_token)
-        pos = { line: token[2][:line], column: token[2][:column] }
+        pos = { line: token[2][:line], column: token[2][:column], offset: token[2][:offset] }
         new_tokens[new_tokens_idx] = [:DESCENDANT, ' ', pos]
         new_tokens_idx += 1
       end
