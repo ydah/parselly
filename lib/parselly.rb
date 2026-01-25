@@ -8,8 +8,19 @@ require_relative 'parselly/parser'
 require_relative 'parselly/version'
 
 module Parselly
-  def parse(selector)
-    Parser.new.parse(selector)
+  ParseResult = Struct.new(:ast, :errors)
+
+  class ParseError < StandardError
+    attr_reader :error
+
+    def initialize(error)
+      @error = error
+      super(error[:message])
+    end
+  end
+
+  def parse(selector, tolerant: false)
+    Parser.new.parse(selector, tolerant: tolerant)
   end
 
   def sanitize(selector)

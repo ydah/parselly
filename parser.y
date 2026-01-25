@@ -276,15 +276,80 @@ NTH_PSEUDO_NAMES = Set['nth-child', 'nth-last-child', 'nth-of-type', 'nth-last-o
 AN_PLUS_B_REGEX = /^(even|odd|[+-]?\d*n(?:[+-]\d+)?|[+-]?n(?:[+-]\d+)?|\d+)$/.freeze
 
 ---- inner
-def parse(input)
+def parse(input, tolerant: false)
+  @tolerant = tolerant
+  @errors = []
+  @error_index = nil
+  @suppress_errors = false
   @lexer = Parselly::Lexer.new(input)
-  @tokens = @lexer.tokenize
+  begin
+    @tokens = @lexer.tokenize
+  rescue RuntimeError => e
+    if tolerant
+      @errors << parse_error_from_exception(e)
+      return Parselly::ParseResult.new(nil, @errors)
+    end
+    raise
+  end
   preprocess_tokens!
   @index = 0
   @current_position = { line: 1, column: 1 }
+
+  if tolerant
+    ast = parse_with_recovery
+    normalize_an_plus_b(ast) if ast
+    return Parselly::ParseResult.new(ast, @errors)
+  end
+
   ast = do_parse
   normalize_an_plus_b(ast)
   ast
+end
+
+def parse_with_recovery
+  do_parse
+rescue Parselly::ParseError, RuntimeError
+  parse_partial_ast
+end
+
+def parse_partial_ast
+  return nil unless @tokens && !@tokens.empty?
+
+  eof_token = @tokens.last if @tokens.last && @tokens.last[0] == false
+  tokens = @tokens.dup
+  tokens.pop if eof_token
+  limit = @error_index || tokens.length
+
+  while limit > 0
+    truncated = tokens[0...limit]
+    truncated << eof_token if eof_token
+    begin
+      return parse_from_tokens(truncated, suppress_errors: true)
+    rescue Parselly::ParseError, RuntimeError
+      limit -= 1
+    end
+  end
+  nil
+end
+
+def parse_from_tokens(tokens, suppress_errors: false)
+  @tokens = tokens
+  @index = 0
+  @current_position = { line: 1, column: 1 }
+  @suppress_errors = suppress_errors
+  do_parse
+ensure
+  @suppress_errors = false
+end
+
+def parse_error_from_exception(error)
+  line = nil
+  column = nil
+  if error.message =~ /at (\d+):(\d+)/
+    line = Regexp.last_match(1).to_i
+    column = Regexp.last_match(2).to_i
+  end
+  { message: error.message, line: line, column: column }
 end
 
 def identifier_value(token)
@@ -379,5 +444,15 @@ end
 def on_error(token_id, val, vstack)
   token_name = token_to_str(token_id) || '?'
   pos = @current_position || { line: '?', column: '?' }
-  raise "Parse error: unexpected #{token_name} '#{val}' at #{pos[:line]}:#{pos[:column]}"
+  error = {
+    message: "Parse error: unexpected #{token_name} '#{val}' at #{pos[:line]}:#{pos[:column]}",
+    line: pos[:line],
+    column: pos[:column]
+  }
+  if @tolerant
+    @errors << error unless @suppress_errors
+    @error_index ||= [@index - 1, 0].max
+    raise Parselly::ParseError, error
+  end
+  raise error[:message]
 end

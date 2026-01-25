@@ -8,5 +8,21 @@ RSpec.describe Parselly do
       expect(ast).not_to be_nil
       expect(ast).to respond_to(:type)
     end
+
+    it 'returns partial AST and errors in tolerant mode' do
+      result = described_class.parse('div >', tolerant: true)
+
+      expect(result).to be_a(Parselly::ParseResult)
+      expect(result.errors).not_to be_empty
+      expect(result.ast).not_to be_nil
+    end
+
+    it 'captures lexer errors in tolerant mode' do
+      result = described_class.parse('div@class', tolerant: true)
+
+      expect(result).to be_a(Parselly::ParseResult)
+      expect(result.errors).not_to be_empty
+      expect(result.ast).to be_nil
+    end
   end
 end
