@@ -68,7 +68,7 @@ module Parselly
         skip_whitespace
         break if @scanner.eos?
 
-        pos = { line: @line, column: @column }
+        pos = { line: @line, column: @column, offset: @scanner.pos }
 
         if (token = scan_string)
           @tokens << [:STRING, token, pos]
@@ -80,11 +80,11 @@ module Parselly
           @tokens << [:IDENT, token, pos]
         else
           char = @scanner.getch
-          raise "Unexpected character: #{char} at #{pos[:line]}:#{pos[:column]}"
+          raise "Unexpected character: #{char} at #{pos[:line]}:#{pos[:column]} (offset #{pos[:offset]})"
         end
       end
 
-      @tokens << [false, nil, { line: @line, column: @column }]
+      @tokens << [false, nil, { line: @line, column: @column, offset: @scanner.pos }]
       @tokens
     end
 

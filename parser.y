@@ -345,11 +345,15 @@ end
 def parse_error_from_exception(error)
   line = nil
   column = nil
+  offset = nil
   if error.message =~ /at (\d+):(\d+)/
     line = Regexp.last_match(1).to_i
     column = Regexp.last_match(2).to_i
   end
-  { message: error.message, line: line, column: column }
+  if error.message =~ /offset (\d+)/
+    offset = Regexp.last_match(1).to_i
+  end
+  { message: error.message, line: line, column: column, offset: offset }
 end
 
 def identifier_value(token)
@@ -447,7 +451,8 @@ def on_error(token_id, val, vstack)
   error = {
     message: "Parse error: unexpected #{token_name} '#{val}' at #{pos[:line]}:#{pos[:column]}",
     line: pos[:line],
-    column: pos[:column]
+    column: pos[:column],
+    offset: pos[:offset]
   }
   if @tolerant
     @errors << error unless @suppress_errors

@@ -12,17 +12,17 @@ RSpec.describe Parselly::Lexer do
         expect(tokens[0][0]).to eq(:IDENT)
         expect(tokens[0][1].value).to eq('div')
         expect(tokens[0][1].raw).to eq('div')
-        expect(tokens[0][2]).to eq({ line: 1, column: 1 })
-        expect(tokens[1]).to eq([:DOT, '.', { line: 1, column: 4 }])
+        expect(tokens[0][2]).to include(line: 1, column: 1, offset: 0)
+        expect(tokens[1]).to eq([:DOT, '.', { line: 1, column: 4, offset: 3 }])
         expect(tokens[2][0]).to eq(:IDENT)
         expect(tokens[2][1].value).to eq('class')
         expect(tokens[2][1].raw).to eq('class')
-        expect(tokens[2][2]).to eq({ line: 1, column: 5 })
-        expect(tokens[3]).to eq([:HASH, '#', { line: 1, column: 10 }])
+        expect(tokens[2][2]).to include(line: 1, column: 5, offset: 4)
+        expect(tokens[3]).to eq([:HASH, '#', { line: 1, column: 10, offset: 9 }])
         expect(tokens[4][0]).to eq(:IDENT)
         expect(tokens[4][1].value).to eq('id')
         expect(tokens[4][1].raw).to eq('id')
-        expect(tokens[4][2]).to eq({ line: 1, column: 11 })
+        expect(tokens[4][2]).to include(line: 1, column: 11, offset: 10)
       end
     end
 
@@ -71,13 +71,13 @@ RSpec.describe Parselly::Lexer do
       it 'tokenizes double-quoted strings' do
         lexer = Parselly::Lexer.new('"hello world"')
         tokens = lexer.tokenize
-        expect(tokens[0]).to eq([:STRING, 'hello world', { line: 1, column: 1 }])
+        expect(tokens[0]).to eq([:STRING, 'hello world', { line: 1, column: 1, offset: 0 }])
       end
 
       it 'tokenizes single-quoted strings' do
         lexer = Parselly::Lexer.new("'hello world'")
         tokens = lexer.tokenize
-        expect(tokens[0]).to eq([:STRING, 'hello world', { line: 1, column: 1 }])
+        expect(tokens[0]).to eq([:STRING, 'hello world', { line: 1, column: 1, offset: 0 }])
       end
 
       it 'handles escaped characters' do
@@ -95,13 +95,13 @@ RSpec.describe Parselly::Lexer do
       it 'tokenizes integers' do
         lexer = Parselly::Lexer.new('123')
         tokens = lexer.tokenize
-        expect(tokens[0]).to eq([:NUMBER, '123', { line: 1, column: 1 }])
+        expect(tokens[0]).to eq([:NUMBER, '123', { line: 1, column: 1, offset: 0 }])
       end
 
       it 'tokenizes decimals' do
         lexer = Parselly::Lexer.new('3.14')
         tokens = lexer.tokenize
-        expect(tokens[0]).to eq([:NUMBER, '3.14', { line: 1, column: 1 }])
+        expect(tokens[0]).to eq([:NUMBER, '3.14', { line: 1, column: 1, offset: 0 }])
       end
     end
 
@@ -112,7 +112,7 @@ RSpec.describe Parselly::Lexer do
         expect(tokens[0][0]).to eq(:IDENT)
         expect(tokens[0][1].value).to eq('div')
         expect(tokens[0][1].raw).to eq('div')
-        expect(tokens[0][2]).to eq({ line: 1, column: 1 })
+        expect(tokens[0][2]).to include(line: 1, column: 1, offset: 0)
       end
 
       it 'tokenizes identifiers with hyphens' do
@@ -121,7 +121,7 @@ RSpec.describe Parselly::Lexer do
         expect(tokens[0][0]).to eq(:IDENT)
         expect(tokens[0][1].value).to eq('custom-element')
         expect(tokens[0][1].raw).to eq('custom-element')
-        expect(tokens[0][2]).to eq({ line: 1, column: 1 })
+        expect(tokens[0][2]).to include(line: 1, column: 1, offset: 0)
       end
 
       it 'tokenizes identifiers with underscores' do
@@ -130,7 +130,7 @@ RSpec.describe Parselly::Lexer do
         expect(tokens[0][0]).to eq(:IDENT)
         expect(tokens[0][1].value).to eq('my_class')
         expect(tokens[0][1].raw).to eq('my_class')
-        expect(tokens[0][2]).to eq({ line: 1, column: 1 })
+        expect(tokens[0][2]).to include(line: 1, column: 1, offset: 0)
       end
     end
 
@@ -139,15 +139,15 @@ RSpec.describe Parselly::Lexer do
 
       it 'tracks line numbers' do
         tokens = lexer.tokenize
-        expect(tokens[0][2]).to eq({ line: 1, column: 1 })
-        expect(tokens[1][2]).to eq({ line: 2, column: 1 })
+        expect(tokens[0][2]).to include(line: 1, column: 1, offset: 0)
+        expect(tokens[1][2]).to include(line: 2, column: 1, offset: 4)
       end
 
       it 'tracks column numbers' do
         lexer = Parselly::Lexer.new('div .class')
         tokens = lexer.tokenize
-        expect(tokens[0][2]).to eq({ line: 1, column: 1 })
-        expect(tokens[1][2]).to eq({ line: 1, column: 5 })
+        expect(tokens[0][2]).to include(line: 1, column: 1, offset: 0)
+        expect(tokens[1][2]).to include(line: 1, column: 5, offset: 4)
       end
     end
 

@@ -14,6 +14,7 @@ RSpec.describe Parselly do
 
       expect(result).to be_a(Parselly::ParseResult)
       expect(result.errors).not_to be_empty
+      expect(result.errors.first).to include(:message, :line, :column, :offset)
       expect(result.ast).not_to be_nil
     end
 
@@ -22,6 +23,7 @@ RSpec.describe Parselly do
 
       expect(result).to be_a(Parselly::ParseResult)
       expect(result.errors).not_to be_empty
+      expect(result.errors.first).to include(:message, :line, :column, :offset)
       expect(result.ast).to be_nil
     end
   end
