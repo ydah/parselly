@@ -32,7 +32,11 @@ module Parselly
       @raw_value = raw_value.nil? ? value : raw_value
       @children = []
       @parent = nil
-      resolved_position = position.is_a?(Hash) ? position.dup : {}
+      unless position.nil? || position.is_a?(Hash)
+        raise ArgumentError, 'position must be a Hash'
+      end
+
+      resolved_position = position ? position.dup : {}
       resolved_position[:line] = line unless line.nil?
       resolved_position[:column] = column unless column.nil?
       resolved_position[:offset] = offset unless offset.nil?
