@@ -153,6 +153,12 @@ rule
         fn.add_child(val[3])
         result = fn
       }
+    | IDENT LPAREN any_value RPAREN
+      {
+        fn = Node.new(:pseudo_function, identifier_value(val[0]), @current_position, raw_value: identifier_raw(val[0]))
+        fn.add_child(val[2])
+        result = fn
+      }
     ;
 
   pseudo_element_selector
