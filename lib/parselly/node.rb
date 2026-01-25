@@ -16,16 +16,17 @@ module Parselly
   #   node.descendants  # Returns array of all descendant nodes
   #   node.siblings     # Returns array of sibling nodes
   class Node
-    attr_accessor :type, :value, :children, :parent, :position
+    attr_accessor :type, :value, :raw_value, :children, :parent, :position
 
     # Creates a new AST node.
     #
     # @param type [Symbol] the type of the node (e.g., :type_selector, :class_selector)
     # @param value [String, nil] optional value associated with the node
     # @param position [Hash] source position with :line and :column keys
-    def initialize(type, value = nil, position = {})
+    def initialize(type, value = nil, position = {}, raw_value: nil)
       @type = type
       @value = value
+      @raw_value = raw_value.nil? ? value : raw_value
       @children = []
       @parent = nil
       @position = position

@@ -4,6 +4,12 @@ require 'strscan'
 
 module Parselly
   class Lexer
+    Identifier = Struct.new(:value, :raw) do
+      def to_s
+        value
+      end
+    end
+
     TOKENS = {
       # Combinators
       '>' => :CHILD,
@@ -145,7 +151,8 @@ module Parselly
       ident = @scanner.matched
       update_position(ident)
       # Remove backslashes from escaped characters
-      ident.gsub(ESCAPE_REGEX, '\1')
+      normalized = ident.gsub(ESCAPE_REGEX, '\1')
+      Identifier.new(normalized, ident)
     end
 
     def scan_number

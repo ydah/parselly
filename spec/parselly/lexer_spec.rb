@@ -9,11 +9,20 @@ RSpec.describe Parselly::Lexer do
 
       it 'tokenizes element, class, and id' do
         tokens = lexer.tokenize
-        expect(tokens[0]).to eq([:IDENT, 'div', { line: 1, column: 1 }])
+        expect(tokens[0][0]).to eq(:IDENT)
+        expect(tokens[0][1].value).to eq('div')
+        expect(tokens[0][1].raw).to eq('div')
+        expect(tokens[0][2]).to eq({ line: 1, column: 1 })
         expect(tokens[1]).to eq([:DOT, '.', { line: 1, column: 4 }])
-        expect(tokens[2]).to eq([:IDENT, 'class', { line: 1, column: 5 }])
+        expect(tokens[2][0]).to eq(:IDENT)
+        expect(tokens[2][1].value).to eq('class')
+        expect(tokens[2][1].raw).to eq('class')
+        expect(tokens[2][2]).to eq({ line: 1, column: 5 })
         expect(tokens[3]).to eq([:HASH, '#', { line: 1, column: 10 }])
-        expect(tokens[4]).to eq([:IDENT, 'id', { line: 1, column: 11 }])
+        expect(tokens[4][0]).to eq(:IDENT)
+        expect(tokens[4][1].value).to eq('id')
+        expect(tokens[4][1].raw).to eq('id')
+        expect(tokens[4][2]).to eq({ line: 1, column: 11 })
       end
     end
 
@@ -100,19 +109,28 @@ RSpec.describe Parselly::Lexer do
       it 'tokenizes simple identifiers' do
         lexer = Parselly::Lexer.new('div')
         tokens = lexer.tokenize
-        expect(tokens[0]).to eq([:IDENT, 'div', { line: 1, column: 1 }])
+        expect(tokens[0][0]).to eq(:IDENT)
+        expect(tokens[0][1].value).to eq('div')
+        expect(tokens[0][1].raw).to eq('div')
+        expect(tokens[0][2]).to eq({ line: 1, column: 1 })
       end
 
       it 'tokenizes identifiers with hyphens' do
         lexer = Parselly::Lexer.new('custom-element')
         tokens = lexer.tokenize
-        expect(tokens[0]).to eq([:IDENT, 'custom-element', { line: 1, column: 1 }])
+        expect(tokens[0][0]).to eq(:IDENT)
+        expect(tokens[0][1].value).to eq('custom-element')
+        expect(tokens[0][1].raw).to eq('custom-element')
+        expect(tokens[0][2]).to eq({ line: 1, column: 1 })
       end
 
       it 'tokenizes identifiers with underscores' do
         lexer = Parselly::Lexer.new('my_class')
         tokens = lexer.tokenize
-        expect(tokens[0]).to eq([:IDENT, 'my_class', { line: 1, column: 1 }])
+        expect(tokens[0][0]).to eq(:IDENT)
+        expect(tokens[0][1].value).to eq('my_class')
+        expect(tokens[0][1].raw).to eq('my_class')
+        expect(tokens[0][2]).to eq({ line: 1, column: 1 })
       end
     end
 

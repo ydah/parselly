@@ -592,6 +592,15 @@ RSpec.describe 'CSS Selector Parser Integration' do
         expect(id_sel.value).to eq('myid')
       end
 
+      it 'preserves raw escapes for identifiers' do
+        ast = parser.parse('#some-id\\.id')
+        id_sel = find_node(ast, :id_selector)
+
+        expect(id_sel).not_to be_nil
+        expect(id_sel.value).to eq('some-id.id')
+        expect(id_sel.raw_value).to eq('some-id\\.id')
+      end
+
       it 'creates class_selector node for .class' do
         ast = parser.parse('.myclass')
         class_sel = find_node(ast, :class_selector)

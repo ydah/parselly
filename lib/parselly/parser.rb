@@ -667,7 +667,7 @@ AN_PLUS_B_REGEX = /^(even|odd|[+-]?\d*n(?:[+-]\d+)?|[+-]?n(?:[+-]\d+)?|\d+)$/.fr
 module Parselly
   class Parser < Racc::Parser
 
-module_eval(<<'...end parser.y/module_eval...', 'parser.y', 272)
+module_eval(<<'...end parser.y/module_eval...', 'parser.y', 273)
 def parse(input)
   @lexer = Parselly::Lexer.new(input)
   @tokens = @lexer.tokenize
@@ -677,6 +677,14 @@ def parse(input)
   ast = do_parse
   normalize_an_plus_b(ast)
   ast
+end
+
+def identifier_value(token)
+  token.respond_to?(:value) ? token.value : token
+end
+
+def identifier_raw(token)
+  token.respond_to?(:raw) ? token.raw : token
 end
 
 def preprocess_tokens!
@@ -1169,7 +1177,7 @@ module_eval(<<'.,.,', 'parser.y', 79)
 
 module_eval(<<'.,.,', 'parser.y', 84)
   def _reduce_19(val, _values, result)
-     result = Node.new(:type_selector, val[0], @current_position)
+     result = Node.new(:type_selector, identifier_value(val[0]), @current_position, raw_value: identifier_raw(val[0]))
     result
   end
 .,.,
@@ -1218,21 +1226,21 @@ module_eval(<<'.,.,', 'parser.y', 99)
 
 module_eval(<<'.,.,', 'parser.y', 104)
   def _reduce_26(val, _values, result)
-     result = Node.new(:id_selector, val[1], @current_position)
+     result = Node.new(:id_selector, identifier_value(val[1]), @current_position, raw_value: identifier_raw(val[1]))
     result
   end
 .,.,
 
 module_eval(<<'.,.,', 'parser.y', 109)
   def _reduce_27(val, _values, result)
-     result = Node.new(:class_selector, val[1], @current_position)
+     result = Node.new(:class_selector, identifier_value(val[1]), @current_position, raw_value: identifier_raw(val[1]))
     result
   end
 .,.,
 
 module_eval(<<'.,.,', 'parser.y', 114)
   def _reduce_28(val, _values, result)
-     result = Node.new(:attribute_selector, val[1], @current_position)
+     result = Node.new(:attribute_selector, identifier_value(val[1]), @current_position, raw_value: identifier_raw(val[1]))
     result
   end
 .,.,
@@ -1240,7 +1248,7 @@ module_eval(<<'.,.,', 'parser.y', 114)
 module_eval(<<'.,.,', 'parser.y', 117)
   def _reduce_29(val, _values, result)
             result = Node.new(:attribute_selector, nil, @current_position)
-        result.add_child(Node.new(:attribute, val[1], @current_position))
+        result.add_child(Node.new(:attribute, identifier_value(val[1]), @current_position, raw_value: identifier_raw(val[1])))
         result.add_child(val[2])
         result.add_child(Node.new(:value, val[3], @current_position))
 
@@ -1251,9 +1259,9 @@ module_eval(<<'.,.,', 'parser.y', 117)
 module_eval(<<'.,.,', 'parser.y', 124)
   def _reduce_30(val, _values, result)
             result = Node.new(:attribute_selector, nil, @current_position)
-        result.add_child(Node.new(:attribute, val[1], @current_position))
+        result.add_child(Node.new(:attribute, identifier_value(val[1]), @current_position, raw_value: identifier_raw(val[1])))
         result.add_child(val[2])
-        result.add_child(Node.new(:value, val[3], @current_position))
+        result.add_child(Node.new(:value, identifier_value(val[3]), @current_position, raw_value: identifier_raw(val[3])))
 
     result
   end
@@ -1303,14 +1311,14 @@ module_eval(<<'.,.,', 'parser.y', 143)
 
 module_eval(<<'.,.,', 'parser.y', 148)
   def _reduce_37(val, _values, result)
-     result = Node.new(:pseudo_class, val[1], @current_position)
+     result = Node.new(:pseudo_class, identifier_value(val[1]), @current_position, raw_value: identifier_raw(val[1]))
     result
   end
 .,.,
 
 module_eval(<<'.,.,', 'parser.y', 151)
   def _reduce_38(val, _values, result)
-            fn = Node.new(:pseudo_function, val[1], @current_position)
+            fn = Node.new(:pseudo_function, identifier_value(val[1]), @current_position, raw_value: identifier_raw(val[1]))
         fn.add_child(val[3])
         result = fn
 
@@ -1320,7 +1328,7 @@ module_eval(<<'.,.,', 'parser.y', 151)
 
 module_eval(<<'.,.,', 'parser.y', 159)
   def _reduce_39(val, _values, result)
-     result = Node.new(:pseudo_element, val[2], @current_position)
+     result = Node.new(:pseudo_element, identifier_value(val[2]), @current_position, raw_value: identifier_raw(val[2]))
     result
   end
 .,.,

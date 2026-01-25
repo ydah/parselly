@@ -82,7 +82,7 @@ rule
 
   type_selector
     : IDENT
-      { result = Node.new(:type_selector, val[0], @current_position) }
+      { result = Node.new(:type_selector, identifier_value(val[0]), @current_position, raw_value: identifier_raw(val[0])) }
     | STAR
       { result = Node.new(:universal_selector, '*', @current_position) }
     ;
@@ -102,30 +102,30 @@ rule
 
   id_selector
     : HASH IDENT
-      { result = Node.new(:id_selector, val[1], @current_position) }
+      { result = Node.new(:id_selector, identifier_value(val[1]), @current_position, raw_value: identifier_raw(val[1])) }
     ;
 
   class_selector
     : DOT IDENT
-      { result = Node.new(:class_selector, val[1], @current_position) }
+      { result = Node.new(:class_selector, identifier_value(val[1]), @current_position, raw_value: identifier_raw(val[1])) }
     ;
 
   attribute_selector
     : LBRACKET IDENT RBRACKET
-      { result = Node.new(:attribute_selector, val[1], @current_position) }
+      { result = Node.new(:attribute_selector, identifier_value(val[1]), @current_position, raw_value: identifier_raw(val[1])) }
     | LBRACKET IDENT attr_matcher STRING RBRACKET
       {
         result = Node.new(:attribute_selector, nil, @current_position)
-        result.add_child(Node.new(:attribute, val[1], @current_position))
+        result.add_child(Node.new(:attribute, identifier_value(val[1]), @current_position, raw_value: identifier_raw(val[1])))
         result.add_child(val[2])
         result.add_child(Node.new(:value, val[3], @current_position))
       }
     | LBRACKET IDENT attr_matcher IDENT RBRACKET
       {
         result = Node.new(:attribute_selector, nil, @current_position)
-        result.add_child(Node.new(:attribute, val[1], @current_position))
+        result.add_child(Node.new(:attribute, identifier_value(val[1]), @current_position, raw_value: identifier_raw(val[1])))
         result.add_child(val[2])
-        result.add_child(Node.new(:value, val[3], @current_position))
+        result.add_child(Node.new(:value, identifier_value(val[3]), @current_position, raw_value: identifier_raw(val[3])))
       }
     ;
 
@@ -146,10 +146,10 @@ rule
 
   pseudo_class_selector
     : COLON IDENT
-      { result = Node.new(:pseudo_class, val[1], @current_position) }
+      { result = Node.new(:pseudo_class, identifier_value(val[1]), @current_position, raw_value: identifier_raw(val[1])) }
     | COLON IDENT LPAREN any_value RPAREN
       {
-        fn = Node.new(:pseudo_function, val[1], @current_position)
+        fn = Node.new(:pseudo_function, identifier_value(val[1]), @current_position, raw_value: identifier_raw(val[1]))
         fn.add_child(val[3])
         result = fn
       }
@@ -157,7 +157,7 @@ rule
 
   pseudo_element_selector
     : COLON COLON IDENT
-      { result = Node.new(:pseudo_element, val[2], @current_position) }
+      { result = Node.new(:pseudo_element, identifier_value(val[2]), @current_position, raw_value: identifier_raw(val[2])) }
     ;
 
   any_value
@@ -265,6 +265,7 @@ CAN_END_COMPOUND = Set[:IDENT, :STAR, :RPAREN, :RBRACKET].freeze
 CAN_START_COMPOUND = Set[:IDENT, :STAR, :DOT, :HASH, :LBRACKET, :COLON].freeze
 TYPE_SELECTOR_TYPES = Set[:IDENT, :STAR].freeze
 SUBCLASS_SELECTOR_TYPES = Set[:DOT, :HASH, :LBRACKET, :COLON].freeze
+SUBCLASS_SELECTOR_END_TYPES = Set[:IDENT, :RBRACKET, :RPAREN].freeze
 NTH_PSEUDO_NAMES = Set['nth-child', 'nth-last-child', 'nth-of-type', 'nth-last-of-type', 'nth-col', 'nth-last-col'].freeze
 AN_PLUS_B_REGEX = /^(even|odd|[+-]?\d*n(?:[+-]\d+)?|[+-]?n(?:[+-]\d+)?|\d+)$/.freeze
 
@@ -278,6 +279,14 @@ def parse(input)
   ast = do_parse
   normalize_an_plus_b(ast)
   ast
+end
+
+def identifier_value(token)
+  token.respond_to?(:value) ? token.value : token
+end
+
+def identifier_raw(token)
+  token.respond_to?(:raw) ? token.raw : token
 end
 
 def preprocess_tokens!
@@ -314,8 +323,11 @@ def needs_descendant?(current, next_tok)
   next_type = next_tok[0]
 
   # Type selector followed by subclass selector = same compound
-  return false if TYPE_SELECTOR_TYPES.include?(current_type) &&
-                  SUBCLASS_SELECTOR_TYPES.include?(next_type)
+  # Subclass selector followed by subclass selector = same compound
+  if SUBCLASS_SELECTOR_TYPES.include?(next_type)
+    return false if TYPE_SELECTOR_TYPES.include?(current_type) ||
+                    SUBCLASS_SELECTOR_END_TYPES.include?(current_type)
+  end
 
   CAN_END_COMPOUND.include?(current_type) && CAN_START_COMPOUND.include?(next_type)
 end
