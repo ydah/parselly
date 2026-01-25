@@ -8,6 +8,10 @@ require_relative 'parselly/parser'
 require_relative 'parselly/version'
 
 module Parselly
+  def parse(selector)
+    Parser.new.parse(selector)
+  end
+
   def sanitize(selector)
     scanner = StringScanner.new(selector)
     result = +''
@@ -46,5 +50,5 @@ module Parselly
     "\\#{char.ord.to_s(16)} "
   end
 
-  module_function :sanitize, :escaped_hex
+  module_function :parse, :sanitize, :escaped_hex
 end
