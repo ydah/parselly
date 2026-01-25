@@ -3,6 +3,18 @@
 RSpec.describe Parselly::Node do
   let(:parser) { Parselly::Parser.new }
 
+  describe '#initialize' do
+    it 'accepts position via keyword arguments' do
+      node = Parselly::Node.new(:type_selector, 'div', line: 1, column: 2, offset: 3)
+      expect(node.position).to eq({ line: 1, column: 2, offset: 3 })
+    end
+
+    it 'merges keyword position with provided position hash' do
+      node = Parselly::Node.new(:type_selector, 'div', { line: 5, column: 6 }, offset: 7)
+      expect(node.position).to eq({ line: 5, column: 6, offset: 7 })
+    end
+  end
+
   describe '#id?' do
     it 'returns true when node contains an ID selector' do
       ast = parser.parse('#myid')
