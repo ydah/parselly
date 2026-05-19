@@ -270,7 +270,7 @@ rule
     | COLON IDENT LPAREN any_value RPAREN
       {
         fn = Node.new(:pseudo_function, token_value(val[1]), token_position(val[0]), raw_value: token_raw(val[1]), prefix: ':')
-        fn.add_child(val[3])
+        fn.add_child(normalize_pseudo_argument(fn.value, val[3]))
         result = fn
       }
     ;
@@ -673,24 +673,8 @@ def token_raw_length(token)
 end
 
 def finalize_ast(node)
-  normalize_an_plus_b(node)
   validate_known_pseudo_functions!(node)
   validate_max_depth!(node) if @max_depth
-end
-
-def normalize_an_plus_b(node)
-  return unless node.respond_to?(:children) && node.children
-
-  if node.type == :pseudo_function && NTH_PSEUDO_NAMES.include?(node.value)
-    child = node.children.first
-    if child&.type == :selector_list
-      an_plus_b_value = extract_an_plus_b_value(child)
-      if an_plus_b_value
-        node.replace_child(0, Node.new(:an_plus_b, an_plus_b_value, child.position))
-      end
-    end
-  end
-  node.children.compact.each { |child| normalize_an_plus_b(child) }
 end
 
 def validate_known_pseudo_functions!(node)
@@ -738,6 +722,16 @@ def validate_max_depth!(node)
     end
     current.children.each { |child| stack << [child, depth + 1] }
   end
+end
+
+def normalize_pseudo_argument(name, argument)
+  return argument unless NTH_PSEUDO_NAMES.include?(name)
+  return argument unless argument&.type == :selector_list
+
+  an_plus_b_value = extract_an_plus_b_value(argument)
+  return argument unless an_plus_b_value
+
+  Node.new(:an_plus_b, an_plus_b_value, argument.position, raw_value: an_plus_b_value)
 end
 
 def extract_an_plus_b_value(selector_list_node)

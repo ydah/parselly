@@ -14,6 +14,11 @@ namespace 'build' do
   end
 end
 
+desc 'run parser benchmarks'
+task :benchmark do
+  ruby 'benchmark/parser_benchmark.rb'
+end
+
 require 'rspec/core/rake_task'
 RSpec::Core::RakeTask.new(:spec) do |spec|
   spec.pattern = FileList['spec/**/*_spec.rb']

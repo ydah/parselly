@@ -4,7 +4,14 @@ require 'strscan'
 require 'set'
 
 module Parselly
-  ParseResult = Struct.new(:ast, :errors) do
+  class ParseResult
+    attr_accessor :ast, :errors
+
+    def initialize(ast = nil, errors = nil, **keywords)
+      @ast = keywords.fetch(:ast, ast)
+      @errors = keywords.fetch(:errors, errors || [])
+    end
+
     def success?
       errors.empty? && !ast.nil?
     end
@@ -19,6 +26,21 @@ module Parselly
 
     def first_error
       errors.first
+    end
+
+    def to_a
+      [ast, errors]
+    end
+
+    def deconstruct
+      to_a
+    end
+
+    def deconstruct_keys(keys)
+      hash = { ast: ast, errors: errors }
+      return hash if keys.nil?
+
+      keys.each_with_object({}) { |key, result| result[key] = hash[key] if hash.key?(key) }
     end
   end
 

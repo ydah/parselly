@@ -18,6 +18,15 @@ RSpec.describe Parselly do
       expect(result.ast).not_to be_nil
     end
 
+    it 'supports keyword initialization for parse results' do
+      result = Parselly::ParseResult.new(ast: :ast, errors: [])
+
+      expect(result.ast).to eq(:ast)
+      expect(result.errors).to eq([])
+      expect(result.to_a).to eq([:ast, []])
+      expect(result.deconstruct_keys([:ast])).to eq(ast: :ast)
+    end
+
     it 'captures lexer errors in tolerant mode' do
       result = described_class.parse('div@class', tolerant: true)
 
