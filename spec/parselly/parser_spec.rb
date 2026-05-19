@@ -140,6 +140,17 @@ RSpec.describe Parselly::Parser do
       expect { parser.parse(':not(> .item)') }.to raise_error(Parselly::SyntaxError)
     end
 
+    it 'handles known pseudo names case-insensitively' do
+      expect { parser.parse(':IS(> .item)') }.to raise_error(Parselly::SyntaxError)
+      expect(parser.parse(':WHERE(.item)').specificity).to eq([0, 0, 0])
+
+      nth = parser.parse(':Nth-Child(ODD of .item)')
+      legacy = parser.parse(':Before')
+
+      expect(find_all(nth, :pseudo_function).first.children.first.type).to eq(:nth_selector_argument)
+      expect(find_all(legacy, :pseudo_element).first.value).to eq('Before')
+    end
+
     it 'keeps unknown pseudo-function arguments forward-compatible' do
       ast = parser.parse(':future(> .item)')
 

@@ -632,14 +632,15 @@ module Parselly
     end
 
     def pseudo_function_specificity
-      return [0, 0, 0] if SPECIFICITY_ZERO_PSEUDO_FUNCTIONS.include?(value)
+      name = value.to_s.downcase
+      return [0, 0, 0] if SPECIFICITY_ZERO_PSEUDO_FUNCTIONS.include?(name)
 
-      if SPECIFICITY_MAX_ARGUMENT_PSEUDO_FUNCTIONS.include?(value)
+      if SPECIFICITY_MAX_ARGUMENT_PSEUDO_FUNCTIONS.include?(name)
         child = children.first
         return child ? child.specificity : [0, 0, 0]
       end
 
-      if NTH_PSEUDO_FUNCTIONS.include?(value)
+      if NTH_PSEUDO_FUNCTIONS.include?(name)
         nth_argument = children.first
         selector_specificity = nth_argument&.type == :nth_selector_argument ? nth_argument.children[1].specificity : [0, 0, 0]
         return add_specificity([0, 1, 0], selector_specificity)

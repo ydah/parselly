@@ -659,7 +659,7 @@ require 'set'
 CAN_END_COMPOUND = Set[:IDENT, :STAR, :RPAREN, :RBRACKET, :NUMBER].freeze
 CAN_START_COMPOUND = Set[:IDENT, :STAR, :DOT, :HASH, :LBRACKET, :COLON].freeze
 NTH_PSEUDO_NAMES = Set['nth-child', 'nth-last-child', 'nth-of-type', 'nth-last-of-type', 'nth-col', 'nth-last-col'].freeze
-AN_PLUS_B_REGEX = /^(even|odd|[+-]?\d*n(?:[+-]\d+)?|[+-]?n(?:[+-]\d+)?|\d+)$/.freeze
+AN_PLUS_B_REGEX = /^(even|odd|[+-]?\d*n(?:[+-]\d+)?|[+-]?n(?:[+-]\d+)?|\d+)$/i.freeze
 SELECTOR_LIST_PSEUDO_NAMES = Set['is', 'where', 'not'].freeze
 RELATIVE_SELECTOR_LIST_PSEUDO_NAMES = Set['has'].freeze
 LEGACY_PSEUDO_ELEMENT_NAMES = Set['before', 'after', 'first-line', 'first-letter'].freeze
@@ -842,6 +842,10 @@ def token_quote(token)
   token.respond_to?(:quote) ? token.quote : nil
 end
 
+def pseudo_name(name)
+  name.to_s.downcase
+end
+
 def attribute_modifier_value(token)
   modifier = token_value(token).to_s
   normalized_modifier = modifier.downcase
@@ -947,9 +951,10 @@ def validate_known_pseudo_functions!(node)
   return unless node.respond_to?(:children) && node.children
 
   if node.type == :pseudo_function
-    validate_nth_pseudo!(node) if NTH_PSEUDO_NAMES.include?(node.value)
-    validate_selector_list_pseudo!(node) if SELECTOR_LIST_PSEUDO_NAMES.include?(node.value)
-    validate_relative_selector_list_pseudo!(node) if RELATIVE_SELECTOR_LIST_PSEUDO_NAMES.include?(node.value)
+    name = pseudo_name(node.value)
+    validate_nth_pseudo!(node) if NTH_PSEUDO_NAMES.include?(name)
+    validate_selector_list_pseudo!(node) if SELECTOR_LIST_PSEUDO_NAMES.include?(name)
+    validate_relative_selector_list_pseudo!(node) if RELATIVE_SELECTOR_LIST_PSEUDO_NAMES.include?(name)
   end
 
   node.children.compact.each { |child| validate_known_pseudo_functions!(child) }
@@ -1012,7 +1017,7 @@ def validate_max_depth!(node)
 end
 
 def normalize_pseudo_argument(name, argument)
-  return argument unless NTH_PSEUDO_NAMES.include?(name)
+  return argument unless NTH_PSEUDO_NAMES.include?(pseudo_name(name))
   return argument unless argument&.type == :selector_list
 
   an_plus_b_value = extract_an_plus_b_value(argument)
@@ -1824,7 +1829,7 @@ module_eval(<<'.,.,', 'parser.y', 259)
 module_eval(<<'.,.,', 'parser.y', 265)
   def _reduce_52(val, _values, result)
             name = token_value(val[1])
-        node_type = LEGACY_PSEUDO_ELEMENT_NAMES.include?(name) ? :pseudo_element : :pseudo_class
+        node_type = LEGACY_PSEUDO_ELEMENT_NAMES.include?(pseudo_name(name)) ? :pseudo_element : :pseudo_class
         result = Node.new(node_type, name, token_position(val[0]), raw_value: token_raw(val[1]), prefix: ':')
 
     result
