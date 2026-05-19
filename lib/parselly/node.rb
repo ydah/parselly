@@ -98,6 +98,8 @@ module Parselly
     attr_reader :children
 
     def initialize(type, value = nil, position = {}, raw_value: nil, line: nil, column: nil, offset: nil,
+                   start_line: nil, start_column: nil, start_offset: nil,
+                   end_line: nil, end_column: nil, end_offset: nil,
                    namespace: nil, quote: nil, modifier: nil, prefix: nil)
       @type = type
       @value = value
@@ -116,6 +118,12 @@ module Parselly
       resolved_position[:line] = line unless line.nil?
       resolved_position[:column] = column unless column.nil?
       resolved_position[:offset] = offset unless offset.nil?
+      resolved_position[:start_line] = start_line unless start_line.nil?
+      resolved_position[:start_column] = start_column unless start_column.nil?
+      resolved_position[:start_offset] = start_offset unless start_offset.nil?
+      resolved_position[:end_line] = end_line unless end_line.nil?
+      resolved_position[:end_column] = end_column unless end_column.nil?
+      resolved_position[:end_offset] = end_offset unless end_offset.nil?
       @position = resolved_position
       @descendants_cache = nil
     end

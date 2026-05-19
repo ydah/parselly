@@ -13,6 +13,36 @@ RSpec.describe Parselly::Node do
       node = Parselly::Node.new(:type_selector, 'div', { line: 5, column: 6 }, offset: 7)
       expect(node.position).to eq({ line: 5, column: 6, offset: 7 })
     end
+
+    it 'accepts range positions when a position hash is converted to keywords' do
+      node = Parselly::Node.new(
+        :type_selector,
+        'div',
+        **{
+          line: 1,
+          column: 2,
+          offset: 3,
+          start_line: 1,
+          start_column: 2,
+          start_offset: 3,
+          end_line: 1,
+          end_column: 5,
+          end_offset: 6
+        }
+      )
+
+      expect(node.position).to include(
+        line: 1,
+        column: 2,
+        offset: 3,
+        start_line: 1,
+        start_column: 2,
+        start_offset: 3,
+        end_line: 1,
+        end_column: 5,
+        end_offset: 6
+      )
+    end
   end
 
   describe '#id?' do
