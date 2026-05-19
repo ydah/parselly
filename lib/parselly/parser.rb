@@ -663,11 +663,12 @@ AN_PLUS_B_REGEX = /^(even|odd|[+-]?\d*n(?:[+-]\d+)?|[+-]?n(?:[+-]\d+)?|\d+)$/.fr
 SELECTOR_LIST_PSEUDO_NAMES = Set['is', 'where', 'not'].freeze
 RELATIVE_SELECTOR_LIST_PSEUDO_NAMES = Set['has'].freeze
 LEGACY_PSEUDO_ELEMENT_NAMES = Set['before', 'after', 'first-line', 'first-letter'].freeze
+ATTRIBUTE_MODIFIERS = Set['i', 's'].freeze
 
 module Parselly
   class Parser < Racc::Parser
 
-module_eval(<<'...end parser.y/module_eval...', 'parser.y', 424)
+module_eval(<<'...end parser.y/module_eval...', 'parser.y', 425)
 def parse(input, tolerant: false, max_length: nil, max_tokens: nil, max_depth: nil, freeze: false)
   @tolerant = tolerant
   @errors = []
@@ -839,6 +840,23 @@ end
 
 def token_quote(token)
   token.respond_to?(:quote) ? token.quote : nil
+end
+
+def attribute_modifier_value(token)
+  modifier = token_value(token).to_s
+  normalized_modifier = modifier.downcase
+  return normalized_modifier if ATTRIBUTE_MODIFIERS.include?(normalized_modifier)
+
+  raise_syntax_error("Parse error: invalid attribute modifier '#{modifier}'", token_position(token))
+end
+
+def raise_syntax_error(message, position)
+  error = parse_error(message, position)
+  if @tolerant
+    @errors << error unless @suppress_errors
+    @error_index ||= [@index - 1, 0].max
+  end
+  raise Parselly::SyntaxError, error
 end
 
 def preprocess_tokens!
@@ -1038,13 +1056,7 @@ end
 def on_error(token_id, val, vstack)
   token_name = token_to_str(token_id) || '?'
   pos = @current_position || { line: '?', column: '?' }
-  error = parse_error("Parse error: unexpected #{token_name} '#{token_value(val)}' at #{pos[:line]}:#{pos[:column]}", pos)
-  if @tolerant
-    @errors << error unless @suppress_errors
-    @error_index ||= [@index - 1, 0].max
-    raise Parselly::SyntaxError, error
-  end
-  raise Parselly::SyntaxError, error
+  raise_syntax_error("Parse error: unexpected #{token_name} '#{token_value(val)}' at #{pos[:line]}:#{pos[:column]}", pos)
 end
 ...end parser.y/module_eval...
 ##### State transition tables begin ###
@@ -1804,7 +1816,7 @@ module_eval(<<'.,.,', 'parser.y', 257)
 
 module_eval(<<'.,.,', 'parser.y', 259)
   def _reduce_51(val, _values, result)
-     result = token_value(val[0])
+     result = attribute_modifier_value(val[0])
     result
   end
 .,.,

@@ -238,14 +238,14 @@ module Parselly
     end
 
     def update_position(text)
-      text.each_char do |char|
-        if char == "\n"
-          @line += 1
-          @column = 1
-        else
-          @column += 1
-        end
+      last_newline = text.rindex("\n")
+      unless last_newline
+        @column += text.each_char.count
+        return
       end
+
+      @line += text.count("\n")
+      @column = text[(last_newline + 1)..].each_char.count + 1
     end
 
     def current_position

@@ -72,6 +72,7 @@ RSpec.describe Parselly::Parser do
 
     it 'supports attribute modifiers and numeric attribute values' do
       flagged = parser.parse('[type="A" i]')
+      sensitive = parser.parse('[type="A" s]')
       numeric = parser.parse('[data-id=123]')
 
       expect(flagged.attribute_selectors.first).to include(
@@ -80,8 +81,14 @@ RSpec.describe Parselly::Parser do
         quote: '"',
         modifier: 'i'
       )
+      expect(sensitive.attribute_selectors.first).to include(
+        name: 'type',
+        value: 'A',
+        modifier: 's'
+      )
       expect(flagged.to_selector(mode: :preserve)).to eq('[type="A" i]')
       expect(numeric.attributes).to eq([{ name: 'data-id', operator: '=', value: '123' }])
+      expect { parser.parse('[type="A" q]') }.to raise_error(Parselly::SyntaxError, /invalid attribute modifier/)
     end
 
     it 'supports namespaced type, universal, and attribute selectors' do

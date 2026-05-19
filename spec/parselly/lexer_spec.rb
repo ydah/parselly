@@ -192,6 +192,14 @@ RSpec.describe Parselly::Lexer do
         expect(tokens.map(&:first)).to eq([:IDENT, :DOT, :IDENT, false])
         expect(tokens[1][2]).to include(line: 1, column: 17, offset: 16)
       end
+
+      it 'tracks positions after multiline comments with unicode prefixes' do
+        lexer = Parselly::Lexer.new("あ/*\n*/.class")
+        tokens = lexer.tokenize
+
+        expect(tokens.map(&:first)).to eq([:IDENT, :DOT, :IDENT, false])
+        expect(tokens[1][2]).to include(line: 2, column: 3, offset: 8)
+      end
     end
 
     context 'error handling' do
