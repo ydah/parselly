@@ -94,11 +94,11 @@ module Parselly
       private
     end
 
-    attr_accessor :type, :value, :raw_value, :parent, :position, :namespace, :quote, :modifier
+    attr_accessor :type, :value, :raw_value, :parent, :position, :namespace, :quote, :modifier, :prefix
     attr_reader :children
 
     def initialize(type, value = nil, position = {}, raw_value: nil, line: nil, column: nil, offset: nil,
-                   namespace: nil, quote: nil, modifier: nil)
+                   namespace: nil, quote: nil, modifier: nil, prefix: nil)
       @type = type
       @value = value
       @raw_value = raw_value.nil? ? value : raw_value
@@ -107,6 +107,7 @@ module Parselly
       @namespace = namespace
       @quote = quote
       @modifier = modifier
+      @prefix = prefix
       unless position.nil? || position.is_a?(Hash)
         raise ArgumentError, 'position must be a Hash'
       end
@@ -249,13 +250,13 @@ module Parselly
       when :attribute_selector
         build_attribute_selector(mode)
       when :pseudo_class
-        ":#{selector_identifier(mode)}"
+        "#{selector_prefix(mode, ':')}#{selector_identifier(mode)}"
       when :pseudo_element
-        "::#{selector_identifier(mode)}"
+        "#{selector_prefix(mode, '::')}#{selector_identifier(mode)}"
       when :pseudo_function
-        ":#{selector_identifier(mode)}(#{children.map { |child| child.to_selector(mode: mode) }.join})"
+        "#{selector_prefix(mode, ':')}#{selector_identifier(mode)}(#{children.map { |child| child.to_selector(mode: mode) }.join})"
       when :pseudo_element_function
-        "::#{selector_identifier(mode)}(#{children.map { |child| child.to_selector(mode: mode) }.join})"
+        "#{selector_prefix(mode, '::')}#{selector_identifier(mode)}(#{children.map { |child| child.to_selector(mode: mode) }.join})"
       when :child_combinator
         ' > '
       when :adjacent_combinator
@@ -403,6 +404,7 @@ module Parselly
         namespace: namespace,
         quote: quote,
         modifier: modifier,
+        prefix: prefix,
         position: position,
         children: children.map(&:to_h)
       }
@@ -434,7 +436,8 @@ module Parselly
         raw_value: raw_value,
         namespace: namespace,
         quote: quote,
-        modifier: modifier
+        modifier: modifier,
+        prefix: prefix
       )
       children.each { |child| duplicate.add_child(child.dup_tree) }
       duplicate
@@ -582,6 +585,10 @@ module Parselly
       return raw_value.to_s if mode == :preserve && raw_value
 
       Parselly.sanitize(value.to_s)
+    end
+
+    def selector_prefix(mode, normalized_prefix)
+      mode == :preserve && prefix ? prefix : normalized_prefix
     end
 
     def argument_selector(mode)

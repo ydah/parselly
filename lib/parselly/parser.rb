@@ -1366,7 +1366,7 @@ module_eval(<<'.,.,', 'parser.y', 31)
 
 module_eval(<<'.,.,', 'parser.y', 26)
   def _reduce_4(val, _values, result)
-            result = Node.new(:selector_list, nil, @current_position)
+            result = Node.new(:selector_list, nil, val[0].position)
         result.add_child(val[0])
         val[1].each { |pair| result.add_child(pair[1]) }
 
@@ -1797,7 +1797,7 @@ module_eval(<<'.,.,', 'parser.y', 265)
   def _reduce_52(val, _values, result)
             name = token_value(val[1])
         node_type = LEGACY_PSEUDO_ELEMENT_NAMES.include?(name) ? :pseudo_element : :pseudo_class
-        result = Node.new(node_type, name, token_position(val[0]), raw_value: token_raw(val[1]))
+        result = Node.new(node_type, name, token_position(val[0]), raw_value: token_raw(val[1]), prefix: ':')
 
     result
   end
@@ -1805,7 +1805,7 @@ module_eval(<<'.,.,', 'parser.y', 265)
 
 module_eval(<<'.,.,', 'parser.y', 271)
   def _reduce_53(val, _values, result)
-            fn = Node.new(:pseudo_function, token_value(val[1]), token_position(val[0]), raw_value: token_raw(val[1]))
+            fn = Node.new(:pseudo_function, token_value(val[1]), token_position(val[0]), raw_value: token_raw(val[1]), prefix: ':')
         fn.add_child(val[3])
         result = fn
 
@@ -1815,14 +1815,14 @@ module_eval(<<'.,.,', 'parser.y', 271)
 
 module_eval(<<'.,.,', 'parser.y', 279)
   def _reduce_54(val, _values, result)
-     result = Node.new(:pseudo_element, token_value(val[2]), token_position(val[0]), raw_value: token_raw(val[2]))
+     result = Node.new(:pseudo_element, token_value(val[2]), token_position(val[0]), raw_value: token_raw(val[2]), prefix: '::')
     result
   end
 .,.,
 
 module_eval(<<'.,.,', 'parser.y', 282)
   def _reduce_55(val, _values, result)
-            fn = Node.new(:pseudo_element_function, token_value(val[2]), token_position(val[0]), raw_value: token_raw(val[2]))
+            fn = Node.new(:pseudo_element_function, token_value(val[2]), token_position(val[0]), raw_value: token_raw(val[2]), prefix: '::')
         fn.add_child(val[4])
         result = fn
 
@@ -2019,7 +2019,7 @@ module_eval(<<'.,.,', 'parser.y', 396)
 
 module_eval(<<'.,.,', 'parser.y', 391)
   def _reduce_78(val, _values, result)
-            result = Node.new(:selector_list, nil, @current_position)
+            result = Node.new(:selector_list, nil, val[0].position)
         result.add_child(val[0])
         val[1].each { |pair| result.add_child(pair[1]) }
 

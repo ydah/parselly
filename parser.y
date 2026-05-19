@@ -24,7 +24,7 @@ rule
   selector_list
     : complex_selector (COMMA complex_selector)*
       {
-        result = Node.new(:selector_list, nil, @current_position)
+        result = Node.new(:selector_list, nil, val[0].position)
         result.add_child(val[0])
         val[1].each { |pair| result.add_child(pair[1]) }
       }
@@ -265,11 +265,11 @@ rule
       {
         name = token_value(val[1])
         node_type = LEGACY_PSEUDO_ELEMENT_NAMES.include?(name) ? :pseudo_element : :pseudo_class
-        result = Node.new(node_type, name, token_position(val[0]), raw_value: token_raw(val[1]))
+        result = Node.new(node_type, name, token_position(val[0]), raw_value: token_raw(val[1]), prefix: ':')
       }
     | COLON IDENT LPAREN any_value RPAREN
       {
-        fn = Node.new(:pseudo_function, token_value(val[1]), token_position(val[0]), raw_value: token_raw(val[1]))
+        fn = Node.new(:pseudo_function, token_value(val[1]), token_position(val[0]), raw_value: token_raw(val[1]), prefix: ':')
         fn.add_child(val[3])
         result = fn
       }
@@ -277,10 +277,10 @@ rule
 
   pseudo_element_selector
     : COLON COLON IDENT
-      { result = Node.new(:pseudo_element, token_value(val[2]), token_position(val[0]), raw_value: token_raw(val[2])) }
+      { result = Node.new(:pseudo_element, token_value(val[2]), token_position(val[0]), raw_value: token_raw(val[2]), prefix: '::') }
     | COLON COLON IDENT LPAREN any_value RPAREN
       {
-        fn = Node.new(:pseudo_element_function, token_value(val[2]), token_position(val[0]), raw_value: token_raw(val[2]))
+        fn = Node.new(:pseudo_element_function, token_value(val[2]), token_position(val[0]), raw_value: token_raw(val[2]), prefix: '::')
         fn.add_child(val[4])
         result = fn
       }
@@ -389,7 +389,7 @@ rule
   relative_selector_list
     : relative_selector (COMMA relative_selector)*
       {
-        result = Node.new(:selector_list, nil, @current_position)
+        result = Node.new(:selector_list, nil, val[0].position)
         result.add_child(val[0])
         val[1].each { |pair| result.add_child(pair[1]) }
       }

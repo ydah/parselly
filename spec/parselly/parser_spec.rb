@@ -42,6 +42,7 @@ RSpec.describe Parselly::Parser do
       attribute = find_all(ast, :attribute_selector).first
       value = find_all(ast, :value).first
 
+      expect(ast.position).to include(line: 1, column: 1, offset: 0)
       expect(attribute.position).to include(line: 1, column: 6, offset: 5)
       expect(attribute.position).to include(start_offset: 5, end_offset: 6)
       expect(value.position).to include(line: 1, column: 12, offset: 11)
@@ -119,6 +120,8 @@ RSpec.describe Parselly::Parser do
 
       expect(find_all(ast, :pseudo_element).first.value).to eq('before')
       expect(ast.pseudo_element_names).to eq(['before'])
+      expect(ast.to_selector).to eq('::before')
+      expect(ast.to_selector(mode: :preserve)).to eq(':before')
     end
 
     it 'rejects invalid known pseudo-function arguments' do
