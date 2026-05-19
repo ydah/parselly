@@ -178,6 +178,13 @@ RSpec.describe Parselly::Parser do
       expect(result.ast.to_selector).to eq('div, span')
       expect(result.errors).not_to be_empty
     end
+
+    it 'recovers selector-list entries that fail known pseudo validation' do
+      result = parser.parse(':is(> .item), :nth-child(foo), span', tolerant: true)
+
+      expect(result.ast.to_selector).to eq('span')
+      expect(result.errors).not_to be_empty
+    end
   end
 
   describe 'resource limits' do

@@ -461,13 +461,7 @@ def parse(input, tolerant: false, max_length: nil, max_tokens: nil, max_depth: n
 
   if tolerant
     ast = parse_with_recovery
-    if ast
-      begin
-        finalize_ast(ast)
-      rescue Parselly::ParseError => e
-        @errors << parse_error_from_exception(e)
-      end
-    end
+    ast = validate_or_recover_tolerant_ast(ast) if ast
     ast.freeze_tree if ast && @freeze_tree
     return Parselly::ParseResult.new(ast, @errors)
   end
@@ -484,7 +478,15 @@ rescue Parselly::ParseError, RuntimeError
   parse_selector_list_recovery || parse_partial_ast
 end
 
-def parse_selector_list_recovery
+def validate_or_recover_tolerant_ast(ast)
+  finalize_ast(ast)
+  ast
+rescue Parselly::ParseError => e
+  @errors << parse_error_from_exception(e)
+  parse_selector_list_recovery(validate: true) || ast
+end
+
+def parse_selector_list_recovery(validate: false)
   return nil unless @tokens && @tokens.any? { |token| token[0] == :COMMA }
 
   eof_token = @tokens.last if @tokens.last && @tokens.last[0] == false
@@ -510,6 +512,7 @@ def parse_selector_list_recovery
 
     begin
       parsed = parse_from_tokens(segment + [eof_token || [false, nil, segment.last[2]]], suppress_errors: true)
+      finalize_ast(parsed) if validate
       result.add_child(parsed)
       recovered = true
     rescue Parselly::ParseError, RuntimeError
