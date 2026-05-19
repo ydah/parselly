@@ -430,6 +430,13 @@ def parse(input, tolerant: false, max_length: nil, max_tokens: nil, max_depth: n
   @max_depth = max_depth
   @freeze_tree = freeze
 
+  unless input.is_a?(String)
+    error = parse_error('Input must be a String', { line: 1, column: 1, offset: 0 })
+    return Parselly::ParseResult.new(nil, [error]) if tolerant
+
+    raise Parselly::ParseError, error
+  end
+
   if max_length && input.length > max_length
     error = parse_error("Input exceeds max_length #{max_length}", { line: 1, column: 1, offset: 0 })
     return Parselly::ParseResult.new(nil, [error]) if tolerant

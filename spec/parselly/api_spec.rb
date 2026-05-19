@@ -35,5 +35,14 @@ RSpec.describe Parselly do
       expect(result.errors.first).to include(:message, :line, :column, :offset)
       expect(result.ast).to be_nil
     end
+
+    it 'normalizes non-string input errors' do
+      expect { described_class.parse(nil) }.to raise_error(Parselly::ParseError, /Input must be a String/)
+
+      result = described_class.parse(nil, tolerant: true)
+      expect(result).to be_failure
+      expect(result.ast).to be_nil
+      expect(result.first_error).to include(message: 'Input must be a String', line: 1, column: 1, offset: 0)
+    end
   end
 end
