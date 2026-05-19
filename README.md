@@ -1,30 +1,77 @@
 # Parselly [![Gem Version](https://badge.fury.io/rb/parselly.svg)](https://badge.fury.io/rb/parselly) [![CI](https://github.com/ydah/parselly/actions/workflows/test.yml/badge.svg)](https://github.com/ydah/parselly/actions/workflows/test.yml)
 
-Parselly is a module providing a simple way to parse and extract data from a css selector.
+Pure Ruby CSS selector parser.
 
 ## Installation
 
-Add this line to your application's Gemfile:
 ```ruby
 gem 'parselly'
 ```
 
-And then execute:
 ```bash
 bundle install
 ```
 
-Or install it yourself as:
+Or install it directly:
+
 ```bash
 gem install parselly
 ```
 
+Requires Ruby 2.7 or newer.
+
+## Usage
+
+```ruby
+require 'parselly'
+
+ast = Parselly.parse('article#main.content[data-state="open"] > a:hover')
+
+ast.ids
+#=> ["main"]
+
+ast.attributes
+#=> [{ name: "data-state", operator: "=", value: "open" }]
+
+ast.pseudo_class_names
+#=> ["hover"]
+
+ast.specificity
+#=> [1, 3, 2]
+```
+
+Strict parsing raises `Parselly::LexError` or `Parselly::SyntaxError` for invalid selectors:
+
+```ruby
+Parselly.parse('div >')
+```
+
+Use tolerant mode when you want a `Parselly::ParseResult` instead:
+
+```ruby
+result = Parselly.parse('div >', tolerant: true)
+
+result.success?
+#=> false
+
+result.errors.first[:message]
+#=> "Parse error: unexpected $end '' at 1:6"
+```
+
+Use `Parselly.sanitize` to escape text for a CSS identifier:
+
+```ruby
+Parselly.sanitize('1st item')
+#=> "\\31 st\\ item"
+```
+
 ## Development
 
-After checking out the repo, run `bin/setup` to install dependencies. You can also run `bin/console` for an interactive prompt that will allow you to experiment.
+```bash
+bin/setup
+bundle exec rake
+```
 
-To install this gem onto your local machine, run `bundle exec rake install`. To release a new version, update the version number in `version.rb`, and then run `bundle exec rake release`, which will create a git tag for the version, push git commits and the created tag, and push the `.gem` file to [rubygems.org](https://rubygems.org).
+## License
 
-## Contributing
-
-Bug reports and pull requests are welcome on GitHub at https://github.com/ydah/parselly.
+MIT
