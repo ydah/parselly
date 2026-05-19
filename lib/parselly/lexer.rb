@@ -238,14 +238,14 @@ module Parselly
     end
 
     def update_position(text)
-      last_newline = text.rindex("\n")
-      unless last_newline
+      unless text.match?(/[\n\r\f]/)
         @column += text.each_char.count
         return
       end
 
-      @line += text.count("\n")
-      @column = text[(last_newline + 1)..].each_char.count + 1
+      lines = text.split(/\r\n|[\n\r\f]/, -1)
+      @line += lines.length - 1
+      @column = lines.last.each_char.count + 1
     end
 
     def current_position

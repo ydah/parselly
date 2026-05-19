@@ -159,6 +159,16 @@ RSpec.describe Parselly::Lexer do
         expect(tokens[0][2]).to include(line: 1, column: 1, offset: 0)
         expect(tokens[1][2]).to include(line: 1, column: 5, offset: 4)
       end
+
+      it 'tracks CSS newline variants' do
+        cr_tokens = Parselly::Lexer.new("div\r.class").tokenize
+        crlf_tokens = Parselly::Lexer.new("div\r\n.class").tokenize
+        ff_tokens = Parselly::Lexer.new("div\f.class").tokenize
+
+        expect(cr_tokens[1][2]).to include(line: 2, column: 1, offset: 4)
+        expect(crlf_tokens[1][2]).to include(line: 2, column: 1, offset: 5)
+        expect(ff_tokens[1][2]).to include(line: 2, column: 1, offset: 4)
+      end
     end
 
     context 'whitespace handling' do
