@@ -137,7 +137,8 @@ module Parselly
         raise_lexer_error('Invalid input encoding', { line: 1, column: 1, offset: 0 })
       end
 
-      @scanner = StringScanner.new(input)
+      preprocessed_input, @offset_map = preprocess_input(input)
+      @scanner = StringScanner.new(preprocessed_input)
       @line = 1
       @column = 1
       @tokens = []
@@ -169,6 +170,49 @@ module Parselly
     end
 
     private
+
+    def preprocess_input(input)
+      output = +''
+      offset_map = { 0 => 0 }
+      chars = input.each_char.to_a
+      original_offset = 0
+      index = 0
+
+      while index < chars.length
+        char = chars[index]
+        original_start = original_offset
+        original_offset += char.bytesize
+
+        if char == "\r"
+          if chars[index + 1] == "\n"
+            index += 1
+            original_offset += chars[index].bytesize
+          end
+          append_preprocessed(output, offset_map, "\n", original_start, original_offset)
+        elsif char == "\f"
+          append_preprocessed(output, offset_map, "\n", original_start, original_offset)
+        elsif char == "\0" || surrogate_codepoint?(char)
+          append_preprocessed(output, offset_map, REPLACEMENT_CHARACTER, original_start, original_offset)
+        else
+          append_preprocessed(output, offset_map, char, original_start, original_offset)
+        end
+
+        index += 1
+      end
+
+      offset_map[output.bytesize] = original_offset
+      [output, offset_map]
+    end
+
+    def append_preprocessed(output, offset_map, value, original_start, original_end)
+      offset_map[output.bytesize] = original_start
+      output << value
+      offset_map[output.bytesize] = original_end
+    end
+
+    def surrogate_codepoint?(char)
+      char.ord.between?(0xD800, 0xDFFF)
+    end
 
     def skip_ignored
       loop do
@@ -250,7 +294,11 @@ module Parselly
     end
 
     def current_position
-      { line: @line, column: @column, offset: @scanner.pos }
+      { line: @line, column: @column, offset: original_offset(@scanner.pos) }
+    end
+
+    def original_offset(preprocessed_offset)
+      @offset_map.fetch(preprocessed_offset, preprocessed_offset)
     end
 
     def build_token(type, value, start_position)
@@ -260,7 +308,7 @@ module Parselly
         start_offset: start_position[:offset],
         end_line: @line,
         end_column: @column,
-        end_offset: @scanner.pos
+        end_offset: original_offset(@scanner.pos)
       )
 
       value.position = position if value.respond_to?(:position=)
@@ -271,10 +319,10 @@ module Parselly
       current_position.merge(
         start_line: @line,
         start_column: @column,
-        start_offset: @scanner.pos,
+        start_offset: original_offset(@scanner.pos),
         end_line: @line,
         end_column: @column,
-        end_offset: @scanner.pos
+        end_offset: original_offset(@scanner.pos)
       )
     end
 

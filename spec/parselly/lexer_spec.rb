@@ -116,6 +116,15 @@ RSpec.describe Parselly::Lexer do
 
         expect(tokens[0][1].value).to eq("\uFFFD\uFFFD\uFFFD")
       end
+
+      it 'preprocesses null code points before tokenizing strings' do
+        lexer = Parselly::Lexer.new("\"a\0b\"")
+        tokens = lexer.tokenize
+
+        expect(tokens[0][1].value).to eq("a\uFFFDb")
+        expect(tokens[0][1].raw).to eq("a\uFFFDb")
+        expect(tokens[0][2]).to include(start_offset: 0, end_offset: 5)
+      end
     end
 
     context 'with numbers' do
@@ -158,6 +167,16 @@ RSpec.describe Parselly::Lexer do
         expect(tokens[0][1].value).to eq('my_class')
         expect(tokens[0][1].raw).to eq('my_class')
         expect(tokens[0][2]).to include(line: 1, column: 1, offset: 0)
+      end
+
+      it 'preprocesses null code points before tokenizing identifiers' do
+        lexer = Parselly::Lexer.new(".a\0b")
+        tokens = lexer.tokenize
+
+        expect(tokens.map(&:first)).to eq([:DOT, :IDENT, false])
+        expect(tokens[1][1].value).to eq("a\uFFFDb")
+        expect(tokens[1][1].raw).to eq("a\uFFFDb")
+        expect(tokens[1][2]).to include(start_offset: 1, end_offset: 4)
       end
     end
 
