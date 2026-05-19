@@ -7,6 +7,11 @@ namespace 'build' do
   task :parser do
     sh 'bundle exec racc parser.y --embedded --frozen -o lib/parselly/parser.rb -t --log-file=parser.output'
   end
+
+  desc 'verify generated parser files are in sync'
+  task check_parser: :parser do
+    sh 'git diff --exit-code lib/parselly/parser.rb parser.output'
+  end
 end
 
 require 'rspec/core/rake_task'
