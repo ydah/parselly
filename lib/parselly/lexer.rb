@@ -113,8 +113,6 @@ module Parselly
     SINGLE_CHAR_OPERATOR_REGEX = /[|>+~\[\]():,.#*=-]/.freeze
     WHITESPACE_REGEX = /[ \t\n\r\f]+/.freeze
     COMMENT_REGEX = %r{/\*[^*]*\*+(?:[^/*][^*]*\*+)*/}.freeze
-    STRING_DOUBLE_REGEX = /"([^"\\\n\r\f]|\\(?:\r\n|[\n\r\f]|[^\n\r\f]))*"/.freeze
-    STRING_SINGLE_REGEX = /'([^'\\\n\r\f]|\\(?:\r\n|[\n\r\f]|[^\n\r\f]))*'/.freeze
     ESCAPE_SEQUENCE = /\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f])/.freeze
     IDENTIFIER_REGEX = /
       (?:
@@ -151,8 +149,9 @@ module Parselly
 
         start_position = current_position
 
-        if (value = scan_string(start_position))
-          @tokens << build_token(:STRING, value, start_position)
+        if (token = scan_string(start_position))
+          type, value = token
+          @tokens << build_token(type, value, start_position)
         elsif (value = scan_number)
           @tokens << build_token(:NUMBER, value, start_position)
         elsif (type = scan_operator)
@@ -246,17 +245,22 @@ module Parselly
     end
 
     def scan_string(position)
-      if @scanner.scan(STRING_DOUBLE_REGEX)
-        str = @scanner.matched
-        update_position(str)
-        raw = str[1..-2]
-        TokenValue.new(value: unescape_css(raw), raw: raw, position: position, quote: '"')
-      elsif @scanner.scan(STRING_SINGLE_REGEX)
-        str = @scanner.matched
-        update_position(str)
-        raw = str[1..-2]
-        TokenValue.new(value: unescape_css(raw), raw: raw, position: position, quote: "'")
+      quote = @scanner.peek(1)
+      return unless quote == '"' || quote == "'"
+
+      @scanner.getch
+      update_position(quote)
+      raw = +''
+
+      until @scanner.eos?
+        char = @scanner.peek(1)
+        return build_string_token(:STRING, raw, position, quote) if char == quote && consume_string_char(raw)
+        return build_string_token(:BAD_STRING, raw, position, quote) if newline?(char)
+
+        consume_string_char(raw)
       end
+
+      build_string_token(:STRING, raw, position, quote)
     end
 
     def scan_identifier(position)
@@ -280,6 +284,29 @@ module Parselly
       num = @scanner.matched
       update_position(num)
       num
+    end
+
+    def consume_string_char(raw)
+      char = @scanner.getch
+      update_position(char)
+      return true if char == '"' || char == "'"
+
+      raw << char
+      return true unless char == '\\'
+      return true if @scanner.eos?
+
+      escaped = @scanner.getch
+      update_position(escaped)
+      raw << escaped
+      true
+    end
+
+    def build_string_token(type, raw, position, quote)
+      [type, TokenValue.new(value: unescape_css(raw), raw: raw, position: position, quote: quote)]
+    end
+
+    def newline?(char)
+      char == "\n" || char == "\r" || char == "\f"
     end
 
     def update_position(text)

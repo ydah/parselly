@@ -1,7 +1,7 @@
 class Parselly::Parser
   expect 0
   error_on_expect_mismatch
-  token IDENT STRING NUMBER OF
+  token IDENT STRING BAD_STRING NUMBER OF
         HASH DOT STAR
         LBRACKET RBRACKET
         LPAREN RPAREN

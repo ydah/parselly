@@ -110,6 +110,23 @@ RSpec.describe Parselly::Lexer do
         expect(tokens[0][2]).to include(start_line: 1, end_line: 2)
       end
 
+      it 'returns a string token when EOF ends the string' do
+        lexer = Parselly::Lexer.new('"unterminated')
+        tokens = lexer.tokenize
+
+        expect(tokens[0][0]).to eq(:STRING)
+        expect(tokens[0][1].value).to eq('unterminated')
+      end
+
+      it 'returns a bad string token for unescaped newlines' do
+        lexer = Parselly::Lexer.new("\"line\nbreak\"")
+        tokens = lexer.tokenize
+
+        expect(tokens[0][0]).to eq(:BAD_STRING)
+        expect(tokens[0][1].value).to eq('line')
+        expect(tokens[0][2]).to include(start_line: 1, end_line: 1)
+      end
+
       it 'decodes invalid escaped code points as replacement characters' do
         lexer = Parselly::Lexer.new('"\\0 \\D800 \\110000 "')
         tokens = lexer.tokenize
