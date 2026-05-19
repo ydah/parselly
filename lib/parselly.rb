@@ -92,6 +92,9 @@ module Parselly
       # Alphanumeric characters, `-`, `_`
       elsif scanner.scan(/[a-zA-Z0-9\-_]/)
         result << scanner.matched
+      # Non-ASCII characters are valid CSS identifier characters.
+      elsif scanner.scan(/[^\x00-\x7F]/)
+        result << scanner.matched
       # Any other characters, escape them
       elsif scanner.scan(/./)
         result << "\\#{scanner.matched}"

@@ -33,6 +33,11 @@ RSpec.describe Parselly do
       expect(Parselly.sanitize(input)).to eq('a-Z_0-9')
     end
 
+    it 'preserves non-ascii identifier characters' do
+      input = 'café-日本語-😀'
+      expect(Parselly.sanitize(input)).to eq(input)
+    end
+
     it 'escapes special characters' do
       input = '!@#$%^&*()'
       expected = '\\!\\@\\#\\$\\%\\^\\&\\*\\(\\)'
