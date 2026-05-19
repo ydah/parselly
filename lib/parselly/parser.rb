@@ -656,52 +656,103 @@ end
 require 'set'
 
 # Pre-computed sets for faster lookup
-CAN_END_COMPOUND = Set[:IDENT, :STAR, :RPAREN, :RBRACKET].freeze
+CAN_END_COMPOUND = Set[:IDENT, :STAR, :RPAREN, :RBRACKET, :NUMBER].freeze
 CAN_START_COMPOUND = Set[:IDENT, :STAR, :DOT, :HASH, :LBRACKET, :COLON].freeze
-TYPE_SELECTOR_TYPES = Set[:IDENT, :STAR].freeze
-SUBCLASS_SELECTOR_TYPES = Set[:DOT, :HASH, :LBRACKET, :COLON].freeze
-SUBCLASS_SELECTOR_END_TYPES = Set[:IDENT, :RBRACKET, :RPAREN].freeze
 NTH_PSEUDO_NAMES = Set['nth-child', 'nth-last-child', 'nth-of-type', 'nth-last-of-type', 'nth-col', 'nth-last-col'].freeze
 AN_PLUS_B_REGEX = /^(even|odd|[+-]?\d*n(?:[+-]\d+)?|[+-]?n(?:[+-]\d+)?|\d+)$/.freeze
+SELECTOR_LIST_PSEUDO_NAMES = Set['is', 'where', 'not', 'has'].freeze
 
 module Parselly
   class Parser < Racc::Parser
 
-module_eval(<<'...end parser.y/module_eval...', 'parser.y', 279)
-def parse(input, tolerant: false)
+module_eval(<<'...end parser.y/module_eval...', 'parser.y', 404)
+def parse(input, tolerant: false, max_length: nil, max_tokens: nil, max_depth: nil)
   @tolerant = tolerant
   @errors = []
   @error_index = nil
   @suppress_errors = false
+  @max_depth = max_depth
+
+  if max_length && input.length > max_length
+    error = parse_error("Input exceeds max_length #{max_length}", { line: 1, column: 1, offset: 0 })
+    return Parselly::ParseResult.new(nil, [error]) if tolerant
+
+    raise Parselly::ParseError, error
+  end
+
   @lexer = Parselly::Lexer.new(input)
   begin
     @tokens = @lexer.tokenize
-  rescue RuntimeError => e
+  rescue Parselly::ParseError, RuntimeError => e
     if tolerant
       @errors << parse_error_from_exception(e)
       return Parselly::ParseResult.new(nil, @errors)
     end
     raise
   end
+
+  if max_tokens && @tokens.size > max_tokens
+    error = parse_error("Input exceeds max_tokens #{max_tokens}", @tokens[max_tokens][2])
+    return Parselly::ParseResult.new(nil, [error]) if tolerant
+
+    raise Parselly::ParseError, error
+  end
+
   preprocess_tokens!
   @index = 0
   @current_position = { line: 1, column: 1, offset: 0 }
 
   if tolerant
     ast = parse_with_recovery
-    normalize_an_plus_b(ast) if ast
+    finalize_ast(ast) if ast
     return Parselly::ParseResult.new(ast, @errors)
   end
 
   ast = do_parse
-  normalize_an_plus_b(ast)
+  finalize_ast(ast)
   ast
 end
 
 def parse_with_recovery
   do_parse
 rescue Parselly::ParseError, RuntimeError
-  parse_partial_ast
+  parse_selector_list_recovery || parse_partial_ast
+end
+
+def parse_selector_list_recovery
+  return nil unless @tokens && @tokens.any? { |token| token[0] == :COMMA }
+
+  eof_token = @tokens.last if @tokens.last && @tokens.last[0] == false
+  body_tokens = eof_token ? @tokens[0...-1] : @tokens
+  segments = []
+  current = []
+
+  body_tokens.each do |token|
+    if token[0] == :COMMA
+      segments << current
+      current = []
+    else
+      current << token
+    end
+  end
+  segments << current
+
+  result = Node.new(:selector_list, nil, body_tokens.first&.[](2) || { line: 1, column: 1, offset: 0 })
+  recovered = false
+
+  segments.each do |segment|
+    next if segment.empty?
+
+    begin
+      parsed = parse_from_tokens(segment + [eof_token || [false, nil, segment.last[2]]], suppress_errors: true)
+      result.add_child(parsed)
+      recovered = true
+    rescue Parselly::ParseError, RuntimeError
+      next
+    end
+  end
+
+  recovered ? result : nil
 end
 
 def parse_partial_ast
@@ -735,6 +786,8 @@ ensure
 end
 
 def parse_error_from_exception(error)
+  return error.error if error.respond_to?(:error)
+
   line = nil
   column = nil
   offset = nil
@@ -748,16 +801,35 @@ def parse_error_from_exception(error)
   { message: error.message, line: line, column: column, offset: offset }
 end
 
-def identifier_value(token)
+def parse_error(message, position)
+  {
+    message: message,
+    line: position[:line],
+    column: position[:column],
+    offset: position[:offset]
+  }
+end
+
+def token_value(token)
   token.respond_to?(:value) ? token.value : token
 end
 
-def identifier_raw(token)
-  token.respond_to?(:raw) ? token.raw : token
+def token_raw(token)
+  token.respond_to?(:raw) ? token.raw : token_value(token)
+end
+
+def token_position(token)
+  token.respond_to?(:position) && token.position ? token.position : @current_position
+end
+
+def token_quote(token)
+  token.respond_to?(:quote) ? token.quote : nil
 end
 
 def preprocess_tokens!
   return if @tokens.size <= 1
+
+  mark_nth_of_tokens!
 
   new_tokens = Array.new(@tokens.size + (@tokens.size / 2)) # Pre-allocate with conservative estimate
   new_tokens_idx = 0
@@ -770,7 +842,7 @@ def preprocess_tokens!
     if i < last_idx
       next_token = @tokens[i + 1]
       if needs_descendant?(token, next_token)
-        pos = { line: token[2][:line], column: token[2][:column], offset: token[2][:offset] }
+        pos = next_token[2]
         new_tokens[new_tokens_idx] = [:DESCENDANT, ' ', pos]
         new_tokens_idx += 1
       end
@@ -780,23 +852,63 @@ def preprocess_tokens!
   @tokens = new_tokens.first(new_tokens_idx)
 end
 
-# Insert DESCENDANT combinator if:
-# - Current token can end a compound selector
-# - Next token can start a compound selector
-# - EXCEPT when current is type_selector and next is subclass_selector
-#   (they belong to the same compound selector)
+def mark_nth_of_tokens!
+  paren_depth = 0
+  last_idx = @tokens.size - 1
+
+  @tokens.each_with_index do |token, index|
+    case token[0]
+    when :LPAREN
+      paren_depth += 1
+    when :RPAREN
+      paren_depth -= 1 if paren_depth.positive?
+    when :IDENT
+      next unless paren_depth.positive?
+      next unless token_value(token[1]) == 'of'
+      next if index.zero? || index >= last_idx
+
+      previous_token = @tokens[index - 1]
+      next_token = @tokens[index + 1]
+      if token_gap?(previous_token, token) && token_gap?(token, next_token) &&
+         CAN_START_COMPOUND.include?(next_token[0])
+        token[0] = :OF
+      end
+    end
+  end
+end
+
+# Insert DESCENDANT combinator only when actual ignored input
+# (CSS whitespace or comments) separated two compound selector tokens.
 def needs_descendant?(current, next_tok)
   current_type = current[0]
   next_type = next_tok[0]
 
-  # Type selector followed by subclass selector = same compound
-  # Subclass selector followed by subclass selector = same compound
-  if SUBCLASS_SELECTOR_TYPES.include?(next_type)
-    return false if TYPE_SELECTOR_TYPES.include?(current_type) ||
-                    SUBCLASS_SELECTOR_END_TYPES.include?(current_type)
-  end
+  CAN_END_COMPOUND.include?(current_type) &&
+    CAN_START_COMPOUND.include?(next_type) &&
+    token_gap?(current, next_tok)
+end
 
-  CAN_END_COMPOUND.include?(current_type) && CAN_START_COMPOUND.include?(next_type)
+def token_gap?(current, next_tok)
+  current_end = current[2][:offset] + token_raw_length(current)
+  next_tok[2][:offset] > current_end
+end
+
+def token_raw_length(token)
+  token_type, token_value = token
+  value = token_value.respond_to?(:raw) ? token_value.raw : token_value.to_s
+
+  case token_type
+  when :STRING
+    value.bytesize + 2
+  else
+    value.bytesize
+  end
+end
+
+def finalize_ast(node)
+  normalize_an_plus_b(node)
+  validate_known_pseudo_functions!(node)
+  validate_max_depth!(node) if @max_depth
 end
 
 def normalize_an_plus_b(node)
@@ -812,6 +924,53 @@ def normalize_an_plus_b(node)
     end
   end
   node.children.compact.each { |child| normalize_an_plus_b(child) }
+end
+
+def validate_known_pseudo_functions!(node)
+  return unless node.respond_to?(:children) && node.children
+
+  if node.type == :pseudo_function
+    validate_nth_pseudo!(node) if NTH_PSEUDO_NAMES.include?(node.value)
+    validate_selector_list_pseudo!(node) if SELECTOR_LIST_PSEUDO_NAMES.include?(node.value)
+  end
+
+  node.children.compact.each { |child| validate_known_pseudo_functions!(child) }
+end
+
+def validate_nth_pseudo!(node)
+  child = node.children.first
+  return if child&.type == :an_plus_b
+  return if child&.type == :nth_selector_argument
+
+  raise Parselly::SyntaxError, parse_error(
+    "Parse error: invalid argument for :#{node.value}()",
+    child&.position || node.position
+  )
+end
+
+def validate_selector_list_pseudo!(node)
+  child = node.children.first
+  return if child&.type == :selector_list
+
+  raise Parselly::SyntaxError, parse_error(
+    "Parse error: invalid argument for :#{node.value}()",
+    child&.position || node.position
+  )
+end
+
+def validate_max_depth!(node)
+  stack = [[node, 1]]
+
+  until stack.empty?
+    current, depth = stack.pop
+    if depth > @max_depth
+      raise Parselly::ParseError, parse_error(
+        "Input exceeds max_depth #{@max_depth}",
+        current.position
+      )
+    end
+    current.children.each { |child| stack << [child, depth + 1] }
+  end
 end
 
 def extract_an_plus_b_value(selector_list_node)
@@ -834,175 +993,216 @@ def next_token
   @index += 1
   @current_position = token_position
 
-  [token_type, token_value]
+  [token_type, parser_token_value(token_value, token_position)]
+end
+
+def parser_token_value(value, position)
+  if value.respond_to?(:position)
+    value.position ||= position if value.respond_to?(:position=)
+    return value
+  end
+
+  Parselly::Lexer::TokenValue.new(value: value, raw: value, position: position)
 end
 
 def on_error(token_id, val, vstack)
   token_name = token_to_str(token_id) || '?'
   pos = @current_position || { line: '?', column: '?' }
-  error = {
-    message: "Parse error: unexpected #{token_name} '#{val}' at #{pos[:line]}:#{pos[:column]}",
-    line: pos[:line],
-    column: pos[:column],
-    offset: pos[:offset]
-  }
+  error = parse_error("Parse error: unexpected #{token_name} '#{token_value(val)}' at #{pos[:line]}:#{pos[:column]}", pos)
   if @tolerant
     @errors << error unless @suppress_errors
     @error_index ||= [@index - 1, 0].max
-    raise Parselly::ParseError, error
+    raise Parselly::SyntaxError, error
   end
-  raise error[:message]
+  raise Parselly::SyntaxError, error
 end
 ...end parser.y/module_eval...
 ##### State transition tables begin ###
 
 racc_action_table = [
-    45,    47,    50,    14,    15,     8,    16,    55,    18,    70,
-    17,    69,    25,    26,    27,    28,    57,    58,    59,    60,
-    61,    62,    51,    45,    47,    50,    14,    15,     8,    16,
-    37,    19,    80,    17,    33,    25,    26,    27,    28,    34,
-    38,    81,    83,     7,    35,    51,    14,    15,     8,    16,
-    36,    84,    92,    17,    33,    25,    26,    27,    28,    65,
-     7,    93,    39,    14,    15,     8,    16,    19,    66,    32,
-    17,    33,    14,    15,    63,    16,    64,     7,    67,    17,
-    14,    15,     8,    16,    68,     7,    71,    17,    14,    15,
-     8,    16,    78,    32,    79,    17,    14,    15,    82,    16,
-    71,     7,    87,    17,    14,    15,     8,    16,    76,    75,
-    88,    17,    25,    26,    27,    28,    25,    26,    27,    28,
-    89,    90,    91,    94,    95,    96,    97 ]
+     7,    44,    41,    19,    15,    16,     8,    17,    42,     7,
+    20,    18,    45,    15,    16,     8,    17,     7,    34,   105,
+    18,    15,    16,     8,    17,     9,     7,    43,    18,   106,
+    15,    16,     8,    17,     9,    35,    38,    18,    89,    75,
+    78,    81,     9,    15,    16,     8,    17,    56,    90,    34,
+    18,     9,    26,    27,    28,    29,    30,    58,    59,    60,
+    61,    62,    63,    82,     9,    75,    78,    81,    39,    15,
+    16,     8,    17,   108,   115,    95,    18,    94,    26,    27,
+    28,    29,    30,   109,   116,    46,    20,     7,    64,    82,
+     9,    15,    16,     8,    17,    71,    70,    72,    18,    36,
+    26,    27,    28,    29,    30,    37,    65,    66,    67,     7,
+    68,    52,     9,    15,    16,     8,    17,    53,    73,    74,
+    18,    54,    26,    27,    28,    29,    30,    55,    15,    16,
+    86,    17,    88,    91,     9,    18,    15,    16,    92,    17,
+    93,    96,   101,    18,    26,    27,    28,    29,    30,    26,
+    27,    28,    29,    30,   102,   103,   107,    96,   112,   113,
+   114,   117,   118,   119,   120 ]
 
 racc_action_check = [
-    33,    33,    33,    33,    33,    33,    33,    36,     1,    51,
-    33,    51,    33,    33,    33,    33,    36,    36,    36,    36,
-    36,    36,    33,    63,    63,    63,    63,    63,    63,    63,
-    17,     2,    68,    63,     7,    63,    63,    63,    63,    14,
-    17,    68,    70,    71,    15,    63,    71,    71,    71,    71,
-    16,    70,    82,    71,    45,    71,    71,    71,    71,    45,
-     0,    82,    18,     0,     0,     0,     0,    20,    45,     4,
-     0,    32,     4,     4,    37,     4,    38,    19,    46,     4,
-    19,    19,    19,    19,    50,    22,    52,    19,    22,    22,
-    22,    22,    65,    30,    66,    22,    30,    30,    69,    30,
-    72,    54,    75,    30,    54,    54,    54,    54,    56,    56,
-    76,    54,     3,     3,     3,     3,    23,    23,    23,    23,
-    77,    80,    81,    83,    84,    92,    93 ]
+     0,    18,    17,     1,     0,     0,     0,     0,    17,    20,
+     2,     0,    18,    20,    20,    20,    20,    23,     7,    93,
+    20,    23,    23,    23,    23,     0,    85,    17,    23,    93,
+    85,    85,    85,    85,    20,     8,    15,    85,    75,    67,
+    67,    67,    23,    67,    67,    67,    67,    40,    75,    75,
+    67,    85,    67,    67,    67,    67,    67,    40,    40,    40,
+    40,    40,    40,    67,    67,    86,    86,    86,    16,    86,
+    86,    86,    86,    95,   107,    82,    86,    82,    86,    86,
+    86,    86,    86,    95,   107,    19,    21,    92,    41,    86,
+    86,    92,    92,    92,    92,    57,    57,    57,    92,     9,
+    92,    92,    92,    92,    92,     9,    42,    43,    44,    96,
+    45,    34,    92,    96,    96,    96,    96,    34,    64,    65,
+    96,    35,    96,    96,    96,    96,    96,    35,     4,     4,
+    68,     4,    69,    76,    96,     4,    32,    32,    79,    32,
+    81,    83,    87,    32,     3,     3,     3,     3,     3,    24,
+    24,    24,    24,    24,    89,    90,    94,    97,   100,   105,
+   106,   108,   109,   115,   116 ]
 
 racc_action_pointer = [
-    58,     8,    18,    98,    67,   nil,   nil,    24,   nil,   nil,
-   nil,   nil,   nil,   nil,    37,    42,    48,    28,    62,    75,
-    54,   nil,    83,   102,   nil,   nil,   nil,   nil,   nil,   nil,
-    91,   nil,    61,    -2,   nil,   nil,    -2,    64,    74,   nil,
-   nil,   nil,   nil,   nil,   nil,    44,    67,   nil,   nil,   nil,
-    82,     7,    73,   nil,    99,   nil,   106,   nil,   nil,   nil,
-   nil,   nil,   nil,    21,   nil,    88,    90,   nil,    17,    96,
-    27,    41,    87,   nil,   nil,    93,   101,   109,   nil,   nil,
-   117,   118,    37,   119,   120,   nil,   nil,   nil,   nil,   nil,
-   nil,   nil,   121,   122,   nil,   nil,   nil,   nil ]
+    -2,     3,    -4,   129,   122,   nil,   nil,    -9,     8,    97,
+   nil,   nil,   nil,   nil,   nil,    34,    66,     0,    -1,    85,
+     7,    72,   nil,    15,   134,   nil,   nil,   nil,   nil,   nil,
+   nil,   nil,   130,   nil,   109,   119,   nil,   nil,   nil,   nil,
+    37,    61,    79,   105,    97,   108,   nil,   nil,   nil,   nil,
+   nil,   nil,   nil,   nil,   nil,   nil,   nil,    93,   nil,   nil,
+   nil,   nil,   nil,   nil,   116,   117,   nil,    37,   119,   130,
+   nil,   nil,   nil,   nil,   nil,    22,   121,   nil,   nil,   133,
+   nil,   138,    73,   127,   nil,    24,    63,   132,   nil,   150,
+   151,   nil,    85,     3,   154,    57,   107,   143,   nil,   nil,
+   146,   nil,   nil,   nil,   nil,   155,   156,    58,   157,   158,
+   nil,   nil,   nil,   nil,   nil,   159,   160,   nil,   nil,   nil,
+   nil ]
 
 racc_action_default = [
-   -62,   -62,    -2,    -6,   -16,   -14,   -15,   -19,   -20,   -21,
-   -22,   -23,   -24,   -25,   -62,   -62,   -62,   -62,   -62,   -62,
-    -2,    -4,   -62,    -6,    -8,    -9,   -10,   -11,   -12,   -13,
-   -16,   -18,   -62,   -62,   -26,   -27,   -62,   -37,   -62,    98,
-    -1,    -3,    -5,    -7,   -17,   -19,   -62,   -41,   -42,   -43,
-   -55,   -62,   -57,   -60,   -62,   -28,   -62,   -31,   -32,   -33,
-   -34,   -35,   -36,   -62,   -40,   -62,   -62,   -39,   -46,   -62,
-   -54,   -62,   -57,   -59,   -61,   -62,   -62,   -62,   -47,   -48,
-   -62,   -62,   -51,   -62,   -62,   -56,   -58,   -29,   -30,   -38,
-   -44,   -45,   -62,   -62,   -52,   -53,   -49,   -50 ]
+   -79,   -79,    -2,    -6,   -17,   -15,   -16,   -20,   -21,   -79,
+   -28,   -29,   -30,   -31,   -32,   -79,   -79,   -79,   -79,   -79,
+   -79,    -2,    -4,   -79,    -6,    -8,    -9,   -10,   -11,   -12,
+   -13,   -14,   -17,   -19,   -79,   -79,   -24,   -27,   -33,   -34,
+   -79,   -37,   -79,   -79,   -52,   -79,   121,    -1,    -3,    -5,
+    -7,   -18,   -22,   -25,   -23,   -26,   -35,   -79,   -41,   -42,
+   -43,   -44,   -45,   -46,   -79,   -79,   -40,   -79,   -54,   -50,
+   -47,   -48,   -49,   -38,   -39,   -20,   -79,   -56,   -57,   -58,
+   -59,   -72,   -79,   -74,   -77,   -79,   -79,   -79,   -51,   -79,
+   -79,   -53,   -79,   -63,   -79,   -71,   -79,   -74,   -76,   -78,
+   -79,   -36,   -64,   -65,   -60,   -79,   -79,   -68,   -79,   -79,
+   -73,   -75,   -55,   -61,   -62,   -79,   -79,   -69,   -70,   -66,
+   -67 ]
 
 racc_goto_table = [
-     2,    46,    30,    31,    22,    24,    73,     1,    42,    21,
-    29,    56,    85,   nil,   nil,   nil,   nil,   nil,   nil,    40,
-   nil,   nil,   nil,   nil,    22,    43,    86,    41,    30,    44,
-   nil,    77,   nil,   nil,   nil,   nil,   nil,   nil,   nil,   nil,
+     2,    32,    33,    23,    25,    98,     1,    22,    76,    49,
+    31,    40,    57,    69,    87,   104,   110,   nil,   nil,   111,
+    47,   nil,   nil,   nil,    23,    50,    48,   100,   nil,    32,
+    51,   nil,   nil,   nil,   nil,   nil,   nil,   nil,   nil,   nil,
    nil,   nil,   nil,   nil,   nil,   nil,   nil,   nil,   nil,   nil,
-   nil,   nil,   nil,   nil,    74 ]
+   nil,   nil,   nil,   nil,   nil,   nil,   nil,   nil,   nil,   nil,
+   nil,   nil,   nil,   nil,   nil,   nil,   nil,   nil,   nil,   nil,
+   nil,   nil,   nil,   nil,   nil,   nil,   nil,   nil,   nil,   nil,
+   nil,   nil,   nil,   nil,   nil,    99 ]
 
 racc_goto_check = [
-     2,    20,    12,    13,     6,     8,    25,     1,     5,     4,
-    10,    19,    23,   nil,   nil,   nil,   nil,   nil,   nil,     2,
-   nil,   nil,   nil,   nil,     6,     8,    25,     4,    12,    13,
-   nil,    20,   nil,   nil,   nil,   nil,   nil,   nil,   nil,   nil,
+     2,    12,    13,     6,     8,    29,     1,     4,    23,     5,
+    10,    19,    20,    21,    22,    26,    27,   nil,   nil,    29,
+     2,   nil,   nil,   nil,     6,     8,     4,    23,   nil,    12,
+    13,   nil,   nil,   nil,   nil,   nil,   nil,   nil,   nil,   nil,
    nil,   nil,   nil,   nil,   nil,   nil,   nil,   nil,   nil,   nil,
-   nil,   nil,   nil,   nil,     2 ]
+   nil,   nil,   nil,   nil,   nil,   nil,   nil,   nil,   nil,   nil,
+   nil,   nil,   nil,   nil,   nil,   nil,   nil,   nil,   nil,   nil,
+   nil,   nil,   nil,   nil,   nil,   nil,   nil,   nil,   nil,   nil,
+   nil,   nil,   nil,   nil,   nil,     2 ]
 
 racc_goto_pointer = [
-   nil,     7,     0,   nil,     7,   -14,     1,   nil,     2,   nil,
-     6,   nil,    -2,    -1,   nil,   nil,   nil,   nil,   nil,   -25,
-   -32,   nil,   nil,   -59,   nil,   -46 ]
+   nil,     6,     0,   nil,     5,   -14,     0,   nil,     1,   nil,
+     6,   nil,    -3,    -2,   nil,   nil,   nil,   nil,   nil,    -6,
+   -28,   -44,   -55,   -59,   nil,   nil,   -77,   -80,   nil,   -78 ]
 
 racc_goto_default = [
-   nil,   nil,    53,    20,   nil,     3,    54,    23,   nil,     4,
-   nil,     5,     6,   nil,     9,    10,    11,    12,    13,   nil,
-   nil,    48,    49,    52,    72,   nil ]
+   nil,   nil,    84,    21,   nil,     3,    85,    24,   nil,     4,
+   nil,     5,     6,   nil,    10,    11,    12,    13,    14,   nil,
+   nil,   nil,   nil,   nil,    77,    79,    80,    83,    97,   nil ]
 
 racc_reduce_table = [
   0, 0, :racc_error,
-  2, 29, :_reduce_1,
-  0, 30, :_reduce_2,
-  2, 30, :_reduce_3,
-  2, 27, :_reduce_4,
-  2, 33, :_reduce_5,
-  0, 34, :_reduce_6,
-  2, 34, :_reduce_7,
-  2, 28, :_reduce_8,
-  1, 32, :_reduce_9,
-  1, 32, :_reduce_10,
-  1, 32, :_reduce_11,
-  1, 32, :_reduce_12,
-  2, 31, :_reduce_13,
-  1, 35, :_reduce_14,
-  1, 35, :_reduce_15,
-  0, 39, :_reduce_16,
-  2, 39, :_reduce_17,
-  1, 36, :_reduce_18,
-  1, 37, :_reduce_19,
-  1, 37, :_reduce_20,
-  1, 38, :_reduce_21,
-  1, 38, :_reduce_22,
-  1, 38, :_reduce_23,
-  1, 38, :_reduce_24,
-  1, 38, :_reduce_25,
-  2, 40, :_reduce_26,
-  2, 41, :_reduce_27,
-  3, 42, :_reduce_28,
-  5, 42, :_reduce_29,
-  5, 42, :_reduce_30,
-  1, 45, :_reduce_31,
-  1, 45, :_reduce_32,
-  1, 45, :_reduce_33,
-  1, 45, :_reduce_34,
-  1, 45, :_reduce_35,
-  1, 45, :_reduce_36,
-  2, 43, :_reduce_37,
-  5, 43, :_reduce_38,
-  4, 43, :_reduce_39,
-  3, 44, :_reduce_40,
-  1, 46, :_reduce_41,
-  1, 46, :_reduce_42,
-  1, 46, :_reduce_43,
-  4, 47, :_reduce_44,
-  4, 47, :_reduce_45,
-  2, 47, :_reduce_46,
-  3, 47, :_reduce_47,
-  3, 47, :_reduce_48,
-  5, 47, :_reduce_49,
-  5, 47, :_reduce_50,
-  3, 47, :_reduce_51,
-  4, 47, :_reduce_52,
-  4, 47, :_reduce_53,
-  2, 47, :_reduce_54,
-  1, 47, :_reduce_55,
-  2, 50, :_reduce_56,
-  0, 51, :_reduce_57,
-  2, 51, :_reduce_58,
-  2, 48, :_reduce_59,
-  1, 49, :_reduce_60,
-  2, 49, :_reduce_61 ]
+  2, 32, :_reduce_1,
+  0, 33, :_reduce_2,
+  2, 33, :_reduce_3,
+  2, 30, :_reduce_4,
+  2, 36, :_reduce_5,
+  0, 37, :_reduce_6,
+  2, 37, :_reduce_7,
+  2, 31, :_reduce_8,
+  1, 35, :_reduce_9,
+  1, 35, :_reduce_10,
+  1, 35, :_reduce_11,
+  1, 35, :_reduce_12,
+  1, 35, :_reduce_13,
+  2, 34, :_reduce_14,
+  1, 38, :_reduce_15,
+  1, 38, :_reduce_16,
+  0, 42, :_reduce_17,
+  2, 42, :_reduce_18,
+  1, 39, :_reduce_19,
+  1, 40, :_reduce_20,
+  1, 40, :_reduce_21,
+  3, 40, :_reduce_22,
+  3, 40, :_reduce_23,
+  2, 40, :_reduce_24,
+  3, 40, :_reduce_25,
+  3, 40, :_reduce_26,
+  2, 40, :_reduce_27,
+  1, 41, :_reduce_28,
+  1, 41, :_reduce_29,
+  1, 41, :_reduce_30,
+  1, 41, :_reduce_31,
+  1, 41, :_reduce_32,
+  2, 43, :_reduce_33,
+  2, 44, :_reduce_34,
+  3, 45, :_reduce_35,
+  6, 45, :_reduce_36,
+  1, 48, :_reduce_37,
+  3, 48, :_reduce_38,
+  3, 48, :_reduce_39,
+  2, 48, :_reduce_40,
+  1, 49, :_reduce_41,
+  1, 49, :_reduce_42,
+  1, 49, :_reduce_43,
+  1, 49, :_reduce_44,
+  1, 49, :_reduce_45,
+  1, 49, :_reduce_46,
+  1, 50, :_reduce_47,
+  1, 50, :_reduce_48,
+  1, 50, :_reduce_49,
+  0, 51, :_reduce_50,
+  1, 51, :_reduce_51,
+  2, 46, :_reduce_52,
+  5, 46, :_reduce_53,
+  3, 47, :_reduce_54,
+  6, 47, :_reduce_55,
+  1, 52, :_reduce_56,
+  1, 52, :_reduce_57,
+  1, 52, :_reduce_58,
+  1, 52, :_reduce_59,
+  3, 53, :_reduce_60,
+  4, 54, :_reduce_61,
+  4, 54, :_reduce_62,
+  2, 54, :_reduce_63,
+  3, 54, :_reduce_64,
+  3, 54, :_reduce_65,
+  5, 54, :_reduce_66,
+  5, 54, :_reduce_67,
+  3, 54, :_reduce_68,
+  4, 54, :_reduce_69,
+  4, 54, :_reduce_70,
+  2, 54, :_reduce_71,
+  1, 54, :_reduce_72,
+  2, 57, :_reduce_73,
+  0, 58, :_reduce_74,
+  2, 58, :_reduce_75,
+  2, 55, :_reduce_76,
+  1, 56, :_reduce_77,
+  2, 56, :_reduce_78 ]
 
-racc_reduce_n = 62
+racc_reduce_n = 79
 
-racc_shift_n = 98
+racc_shift_n = 121
 
 racc_token_table = {
   false => 0,
@@ -1010,29 +1210,32 @@ racc_token_table = {
   :IDENT => 2,
   :STRING => 3,
   :NUMBER => 4,
-  :HASH => 5,
-  :DOT => 6,
-  :STAR => 7,
-  :LBRACKET => 8,
-  :RBRACKET => 9,
-  :LPAREN => 10,
-  :RPAREN => 11,
-  :COLON => 12,
-  :COMMA => 13,
-  :CHILD => 14,
-  :ADJACENT => 15,
-  :SIBLING => 16,
-  :DESCENDANT => 17,
-  :EQUAL => 18,
-  :INCLUDES => 19,
-  :DASHMATCH => 20,
-  :PREFIXMATCH => 21,
-  :SUFFIXMATCH => 22,
-  :SUBSTRINGMATCH => 23,
-  :MINUS => 24,
-  "-temp-group" => 25 }
+  :OF => 5,
+  :HASH => 6,
+  :DOT => 7,
+  :STAR => 8,
+  :LBRACKET => 9,
+  :RBRACKET => 10,
+  :LPAREN => 11,
+  :RPAREN => 12,
+  :COLON => 13,
+  :COMMA => 14,
+  :CHILD => 15,
+  :ADJACENT => 16,
+  :SIBLING => 17,
+  :DESCENDANT => 18,
+  :COLUMN => 19,
+  :EQUAL => 20,
+  :INCLUDES => 21,
+  :DASHMATCH => 22,
+  :PREFIXMATCH => 23,
+  :SUFFIXMATCH => 24,
+  :SUBSTRINGMATCH => 25,
+  :MINUS => 26,
+  :PIPE => 27,
+  "-temp-group" => 28 }
 
-racc_nt_base = 26
+racc_nt_base = 29
 
 racc_use_result_var = true
 
@@ -1059,6 +1262,7 @@ Racc_token_to_s_table = [
   "IDENT",
   "STRING",
   "NUMBER",
+  "OF",
   "HASH",
   "DOT",
   "STAR",
@@ -1072,6 +1276,7 @@ Racc_token_to_s_table = [
   "ADJACENT",
   "SIBLING",
   "DESCENDANT",
+  "COLUMN",
   "EQUAL",
   "INCLUDES",
   "DASHMATCH",
@@ -1079,6 +1284,7 @@ Racc_token_to_s_table = [
   "SUFFIXMATCH",
   "SUBSTRINGMATCH",
   "MINUS",
+  "PIPE",
   "\"-temp-group\"",
   "$start",
   "selector_list",
@@ -1099,8 +1305,12 @@ Racc_token_to_s_table = [
   "attribute_selector",
   "pseudo_class_selector",
   "pseudo_element_selector",
+  "attribute_name",
   "attr_matcher",
+  "attribute_value",
+  "attr_modifier",
   "any_value",
+  "nth_of_value",
   "an_plus_b",
   "relative_selector_list",
   "relative_selector",
@@ -1187,45 +1397,45 @@ module_eval(<<'.,.,', 'parser.y', 35)
 
 module_eval(<<'.,.,', 'parser.y', 52)
   def _reduce_9(val, _values, result)
-     result = Node.new(:child_combinator, '>', @current_position)
+     result = Node.new(:child_combinator, '>', token_position(val[0]))
     result
   end
 .,.,
 
 module_eval(<<'.,.,', 'parser.y', 54)
   def _reduce_10(val, _values, result)
-     result = Node.new(:adjacent_combinator, '+', @current_position)
+     result = Node.new(:adjacent_combinator, '+', token_position(val[0]))
     result
   end
 .,.,
 
 module_eval(<<'.,.,', 'parser.y', 56)
   def _reduce_11(val, _values, result)
-     result = Node.new(:sibling_combinator, '~', @current_position)
+     result = Node.new(:sibling_combinator, '~', token_position(val[0]))
     result
   end
 .,.,
 
 module_eval(<<'.,.,', 'parser.y', 58)
   def _reduce_12(val, _values, result)
-     result = Node.new(:descendant_combinator, ' ', @current_position)
+     result = Node.new(:descendant_combinator, ' ', token_position(val[0]))
     result
   end
 .,.,
 
-module_eval(<<'.,.,', 'parser.y', 64)
+module_eval(<<'.,.,', 'parser.y', 60)
   def _reduce_13(val, _values, result)
+     result = Node.new(:column_combinator, '||', token_position(val[0]))
+    result
+  end
+.,.,
+
+module_eval(<<'.,.,', 'parser.y', 66)
+  def _reduce_14(val, _values, result)
             result = Node.new(:simple_selector_sequence, nil, val[0].position)
         result.add_child(val[0])
         val[1].each { |sel| result.add_child(sel) } unless val[1].empty?
 
-    result
-  end
-.,.,
-
-module_eval(<<'.,.,', 'parser.y', 72)
-  def _reduce_14(val, _values, result)
-     result = val[0]
     result
   end
 .,.,
@@ -1237,171 +1447,343 @@ module_eval(<<'.,.,', 'parser.y', 74)
   end
 .,.,
 
-module_eval(<<'.,.,', 'parser.y', 81)
+module_eval(<<'.,.,', 'parser.y', 76)
   def _reduce_16(val, _values, result)
-    result = val[1] ? val[1].unshift(val[0]) : val
+     result = val[0]
     result
   end
 .,.,
 
-module_eval(<<'.,.,', 'parser.y', 81)
+module_eval(<<'.,.,', 'parser.y', 83)
   def _reduce_17(val, _values, result)
     result = val[1] ? val[1].unshift(val[0]) : val
     result
   end
 .,.,
 
-module_eval(<<'.,.,', 'parser.y', 79)
+module_eval(<<'.,.,', 'parser.y', 83)
   def _reduce_18(val, _values, result)
-     result = val[0]
+    result = val[1] ? val[1].unshift(val[0]) : val
     result
   end
 .,.,
 
-module_eval(<<'.,.,', 'parser.y', 84)
+module_eval(<<'.,.,', 'parser.y', 81)
   def _reduce_19(val, _values, result)
-     result = Node.new(:type_selector, identifier_value(val[0]), @current_position, raw_value: identifier_raw(val[0]))
+     result = val[0]
     result
   end
 .,.,
 
 module_eval(<<'.,.,', 'parser.y', 86)
   def _reduce_20(val, _values, result)
-     result = Node.new(:universal_selector, '*', @current_position)
+     result = Node.new(:type_selector, token_value(val[0]), token_position(val[0]), raw_value: token_raw(val[0]))
+    result
+  end
+.,.,
+
+module_eval(<<'.,.,', 'parser.y', 88)
+  def _reduce_21(val, _values, result)
+     result = Node.new(:universal_selector, '*', token_position(val[0]))
     result
   end
 .,.,
 
 module_eval(<<'.,.,', 'parser.y', 91)
-  def _reduce_21(val, _values, result)
-     result = val[0]
-    result
-  end
-.,.,
-
-module_eval(<<'.,.,', 'parser.y', 93)
   def _reduce_22(val, _values, result)
-     result = val[0]
+            result = Node.new(
+          :type_selector,
+          token_value(val[2]),
+          token_position(val[0]),
+          raw_value: "#{token_raw(val[0])}|#{token_raw(val[2])}",
+          namespace: token_value(val[0])
+        )
+
     result
   end
 .,.,
 
-module_eval(<<'.,.,', 'parser.y', 95)
+module_eval(<<'.,.,', 'parser.y', 101)
   def _reduce_23(val, _values, result)
-     result = val[0]
+            result = Node.new(
+          :type_selector,
+          token_value(val[2]),
+          token_position(val[0]),
+          raw_value: "*|#{token_raw(val[2])}",
+          namespace: '*'
+        )
+
     result
   end
 .,.,
 
-module_eval(<<'.,.,', 'parser.y', 97)
+module_eval(<<'.,.,', 'parser.y', 111)
   def _reduce_24(val, _values, result)
-     result = val[0]
+            result = Node.new(
+          :type_selector,
+          token_value(val[1]),
+          token_position(val[0]),
+          raw_value: "|#{token_raw(val[1])}",
+          namespace: ''
+        )
+
     result
   end
 .,.,
 
-module_eval(<<'.,.,', 'parser.y', 99)
+module_eval(<<'.,.,', 'parser.y', 121)
   def _reduce_25(val, _values, result)
-     result = val[0]
+            result = Node.new(
+          :universal_selector,
+          '*',
+          token_position(val[0]),
+          raw_value: "#{token_raw(val[0])}|*",
+          namespace: token_value(val[0])
+        )
+
     result
   end
 .,.,
 
-module_eval(<<'.,.,', 'parser.y', 104)
+module_eval(<<'.,.,', 'parser.y', 131)
   def _reduce_26(val, _values, result)
-     result = Node.new(:id_selector, identifier_value(val[1]), @current_position, raw_value: identifier_raw(val[1]))
-    result
-  end
-.,.,
+            result = Node.new(
+          :universal_selector,
+          '*',
+          token_position(val[0]),
+          raw_value: '*|*',
+          namespace: '*'
+        )
 
-module_eval(<<'.,.,', 'parser.y', 109)
-  def _reduce_27(val, _values, result)
-     result = Node.new(:class_selector, identifier_value(val[1]), @current_position, raw_value: identifier_raw(val[1]))
-    result
-  end
-.,.,
-
-module_eval(<<'.,.,', 'parser.y', 114)
-  def _reduce_28(val, _values, result)
-     result = Node.new(:attribute_selector, identifier_value(val[1]), @current_position, raw_value: identifier_raw(val[1]))
-    result
-  end
-.,.,
-
-module_eval(<<'.,.,', 'parser.y', 117)
-  def _reduce_29(val, _values, result)
-            result = Node.new(:attribute_selector, nil, @current_position)
-        result.add_child(Node.new(:attribute, identifier_value(val[1]), @current_position, raw_value: identifier_raw(val[1])))
-        result.add_child(val[2])
-        result.add_child(Node.new(:value, val[3], @current_position))
-
-    result
-  end
-.,.,
-
-module_eval(<<'.,.,', 'parser.y', 124)
-  def _reduce_30(val, _values, result)
-            result = Node.new(:attribute_selector, nil, @current_position)
-        result.add_child(Node.new(:attribute, identifier_value(val[1]), @current_position, raw_value: identifier_raw(val[1])))
-        result.add_child(val[2])
-        result.add_child(Node.new(:value, identifier_value(val[3]), @current_position, raw_value: identifier_raw(val[3])))
-
-    result
-  end
-.,.,
-
-module_eval(<<'.,.,', 'parser.y', 133)
-  def _reduce_31(val, _values, result)
-     result = Node.new(:equal_operator, '=', @current_position)
-    result
-  end
-.,.,
-
-module_eval(<<'.,.,', 'parser.y', 135)
-  def _reduce_32(val, _values, result)
-     result = Node.new(:includes_operator, '~=', @current_position)
-    result
-  end
-.,.,
-
-module_eval(<<'.,.,', 'parser.y', 137)
-  def _reduce_33(val, _values, result)
-     result = Node.new(:dashmatch_operator, '|=', @current_position)
-    result
-  end
-.,.,
-
-module_eval(<<'.,.,', 'parser.y', 139)
-  def _reduce_34(val, _values, result)
-     result = Node.new(:prefixmatch_operator, '^=', @current_position)
     result
   end
 .,.,
 
 module_eval(<<'.,.,', 'parser.y', 141)
+  def _reduce_27(val, _values, result)
+            result = Node.new(
+          :universal_selector,
+          '*',
+          token_position(val[0]),
+          raw_value: '|*',
+          namespace: ''
+        )
+
+    result
+  end
+.,.,
+
+module_eval(<<'.,.,', 'parser.y', 153)
+  def _reduce_28(val, _values, result)
+     result = val[0]
+    result
+  end
+.,.,
+
+module_eval(<<'.,.,', 'parser.y', 155)
+  def _reduce_29(val, _values, result)
+     result = val[0]
+    result
+  end
+.,.,
+
+module_eval(<<'.,.,', 'parser.y', 157)
+  def _reduce_30(val, _values, result)
+     result = val[0]
+    result
+  end
+.,.,
+
+module_eval(<<'.,.,', 'parser.y', 159)
+  def _reduce_31(val, _values, result)
+     result = val[0]
+    result
+  end
+.,.,
+
+module_eval(<<'.,.,', 'parser.y', 161)
+  def _reduce_32(val, _values, result)
+     result = val[0]
+    result
+  end
+.,.,
+
+module_eval(<<'.,.,', 'parser.y', 166)
+  def _reduce_33(val, _values, result)
+     result = Node.new(:id_selector, token_value(val[1]), token_position(val[0]), raw_value: token_raw(val[1]))
+    result
+  end
+.,.,
+
+module_eval(<<'.,.,', 'parser.y', 171)
+  def _reduce_34(val, _values, result)
+     result = Node.new(:class_selector, token_value(val[1]), token_position(val[0]), raw_value: token_raw(val[1]))
+    result
+  end
+.,.,
+
+module_eval(<<'.,.,', 'parser.y', 177)
   def _reduce_35(val, _values, result)
-     result = Node.new(:suffixmatch_operator, '$=', @current_position)
+            result = Node.new(
+          :attribute_selector,
+          val[1].value,
+          token_position(val[0]),
+          raw_value: val[1].raw_value,
+          namespace: val[1].namespace
+        )
+
     result
   end
 .,.,
 
-module_eval(<<'.,.,', 'parser.y', 143)
+module_eval(<<'.,.,', 'parser.y', 187)
   def _reduce_36(val, _values, result)
-     result = Node.new(:substringmatch_operator, '*=', @current_position)
+            result = Node.new(:attribute_selector, nil, token_position(val[0]), modifier: val[4])
+        result.add_child(val[1])
+        result.add_child(val[2])
+        result.add_child(val[3])
+
     result
   end
 .,.,
 
-module_eval(<<'.,.,', 'parser.y', 148)
+module_eval(<<'.,.,', 'parser.y', 197)
   def _reduce_37(val, _values, result)
-     result = Node.new(:pseudo_class, identifier_value(val[1]), @current_position, raw_value: identifier_raw(val[1]))
+            result = Node.new(:attribute, token_value(val[0]), token_position(val[0]), raw_value: token_raw(val[0]))
+
     result
   end
 .,.,
 
-module_eval(<<'.,.,', 'parser.y', 151)
+module_eval(<<'.,.,', 'parser.y', 201)
   def _reduce_38(val, _values, result)
-            fn = Node.new(:pseudo_function, identifier_value(val[1]), @current_position, raw_value: identifier_raw(val[1]))
+            result = Node.new(
+          :attribute,
+          token_value(val[2]),
+          token_position(val[0]),
+          raw_value: "#{token_raw(val[0])}|#{token_raw(val[2])}",
+          namespace: token_value(val[0])
+        )
+
+    result
+  end
+.,.,
+
+module_eval(<<'.,.,', 'parser.y', 211)
+  def _reduce_39(val, _values, result)
+            result = Node.new(
+          :attribute,
+          token_value(val[2]),
+          token_position(val[0]),
+          raw_value: "*|#{token_raw(val[2])}",
+          namespace: '*'
+        )
+
+    result
+  end
+.,.,
+
+module_eval(<<'.,.,', 'parser.y', 221)
+  def _reduce_40(val, _values, result)
+            result = Node.new(
+          :attribute,
+          token_value(val[1]),
+          token_position(val[0]),
+          raw_value: "|#{token_raw(val[1])}",
+          namespace: ''
+        )
+
+    result
+  end
+.,.,
+
+module_eval(<<'.,.,', 'parser.y', 233)
+  def _reduce_41(val, _values, result)
+     result = Node.new(:equal_operator, '=', token_position(val[0]))
+    result
+  end
+.,.,
+
+module_eval(<<'.,.,', 'parser.y', 235)
+  def _reduce_42(val, _values, result)
+     result = Node.new(:includes_operator, '~=', token_position(val[0]))
+    result
+  end
+.,.,
+
+module_eval(<<'.,.,', 'parser.y', 237)
+  def _reduce_43(val, _values, result)
+     result = Node.new(:dashmatch_operator, '|=', token_position(val[0]))
+    result
+  end
+.,.,
+
+module_eval(<<'.,.,', 'parser.y', 239)
+  def _reduce_44(val, _values, result)
+     result = Node.new(:prefixmatch_operator, '^=', token_position(val[0]))
+    result
+  end
+.,.,
+
+module_eval(<<'.,.,', 'parser.y', 241)
+  def _reduce_45(val, _values, result)
+     result = Node.new(:suffixmatch_operator, '$=', token_position(val[0]))
+    result
+  end
+.,.,
+
+module_eval(<<'.,.,', 'parser.y', 243)
+  def _reduce_46(val, _values, result)
+     result = Node.new(:substringmatch_operator, '*=', token_position(val[0]))
+    result
+  end
+.,.,
+
+module_eval(<<'.,.,', 'parser.y', 248)
+  def _reduce_47(val, _values, result)
+     result = Node.new(:value, token_value(val[0]), token_position(val[0]), raw_value: token_raw(val[0]), quote: token_quote(val[0]))
+    result
+  end
+.,.,
+
+module_eval(<<'.,.,', 'parser.y', 250)
+  def _reduce_48(val, _values, result)
+     result = Node.new(:value, token_value(val[0]), token_position(val[0]), raw_value: token_raw(val[0]))
+    result
+  end
+.,.,
+
+module_eval(<<'.,.,', 'parser.y', 252)
+  def _reduce_49(val, _values, result)
+     result = Node.new(:value, token_value(val[0]), token_position(val[0]), raw_value: token_raw(val[0]))
+    result
+  end
+.,.,
+
+module_eval(<<'.,.,', 'parser.y', 257)
+  def _reduce_50(val, _values, result)
+     result = nil
+    result
+  end
+.,.,
+
+module_eval(<<'.,.,', 'parser.y', 259)
+  def _reduce_51(val, _values, result)
+     result = token_value(val[0])
+    result
+  end
+.,.,
+
+module_eval(<<'.,.,', 'parser.y', 264)
+  def _reduce_52(val, _values, result)
+     result = Node.new(:pseudo_class, token_value(val[1]), token_position(val[0]), raw_value: token_raw(val[1]))
+    result
+  end
+.,.,
+
+module_eval(<<'.,.,', 'parser.y', 267)
+  def _reduce_53(val, _values, result)
+            fn = Node.new(:pseudo_function, token_value(val[1]), token_position(val[0]), raw_value: token_raw(val[1]))
         fn.add_child(val[3])
         result = fn
 
@@ -1409,175 +1791,192 @@ module_eval(<<'.,.,', 'parser.y', 151)
   end
 .,.,
 
-module_eval(<<'.,.,', 'parser.y', 157)
-  def _reduce_39(val, _values, result)
-            fn = Node.new(:pseudo_function, identifier_value(val[0]), @current_position, raw_value: identifier_raw(val[0]))
-        fn.add_child(val[2])
+module_eval(<<'.,.,', 'parser.y', 275)
+  def _reduce_54(val, _values, result)
+     result = Node.new(:pseudo_element, token_value(val[2]), token_position(val[0]), raw_value: token_raw(val[2]))
+    result
+  end
+.,.,
+
+module_eval(<<'.,.,', 'parser.y', 278)
+  def _reduce_55(val, _values, result)
+            fn = Node.new(:pseudo_element_function, token_value(val[2]), token_position(val[0]), raw_value: token_raw(val[2]))
+        fn.add_child(val[4])
         result = fn
 
     result
   end
 .,.,
 
-module_eval(<<'.,.,', 'parser.y', 165)
-  def _reduce_40(val, _values, result)
-     result = Node.new(:pseudo_element, identifier_value(val[2]), @current_position, raw_value: identifier_raw(val[2]))
-    result
-  end
-.,.,
-
-module_eval(<<'.,.,', 'parser.y', 170)
-  def _reduce_41(val, _values, result)
-     result = Node.new(:argument, val[0], @current_position)
-    result
-  end
-.,.,
-
-module_eval(<<'.,.,', 'parser.y', 172)
-  def _reduce_42(val, _values, result)
-     result = val[0]
-    result
-  end
-.,.,
-
-module_eval(<<'.,.,', 'parser.y', 174)
-  def _reduce_43(val, _values, result)
-     result = val[0]
-    result
-  end
-.,.,
-
-module_eval(<<'.,.,', 'parser.y', 181)
-  def _reduce_44(val, _values, result)
-            # Handle 'An+B' like '2n+1'
-        result = Node.new(:an_plus_b, "#{val[0]}#{val[1]}+#{val[3]}", @current_position)
-
-    result
-  end
-.,.,
-
-module_eval(<<'.,.,', 'parser.y', 186)
-  def _reduce_45(val, _values, result)
-            # Handle 'An-B' like '2n-1'
-        result = Node.new(:an_plus_b, "#{val[0]}#{val[1]}-#{val[3]}", @current_position)
-
-    result
-  end
-.,.,
-
-module_eval(<<'.,.,', 'parser.y', 191)
-  def _reduce_46(val, _values, result)
-            # Handle 'An' like '2n' or composite like '2n-1' (when '-1' is part of IDENT)
-        result = Node.new(:an_plus_b, "#{val[0]}#{val[1]}", @current_position)
-
-    result
-  end
-.,.,
-
-module_eval(<<'.,.,', 'parser.y', 196)
-  def _reduce_47(val, _values, result)
-            # Handle 'n+B' like 'n+5' or keywords followed by offset (rare but valid)
-        result = Node.new(:an_plus_b, "#{val[0]}+#{val[2]}", @current_position)
-
-    result
-  end
-.,.,
-
-module_eval(<<'.,.,', 'parser.y', 201)
-  def _reduce_48(val, _values, result)
-            # Handle 'n-B' like 'n-3'
-        result = Node.new(:an_plus_b, "#{val[0]}-#{val[2]}", @current_position)
-
-    result
-  end
-.,.,
-
-module_eval(<<'.,.,', 'parser.y', 207)
-  def _reduce_49(val, _values, result)
-            # Handle '-An+B' like '-2n+1'
-        result = Node.new(:an_plus_b, "-#{val[1]}#{val[2]}+#{val[4]}", @current_position)
-
-    result
-  end
-.,.,
-
-module_eval(<<'.,.,', 'parser.y', 212)
-  def _reduce_50(val, _values, result)
-            # Handle '-An-B' like '-2n-1'
-        result = Node.new(:an_plus_b, "-#{val[1]}#{val[2]}-#{val[4]}", @current_position)
-
-    result
-  end
-.,.,
-
-module_eval(<<'.,.,', 'parser.y', 217)
-  def _reduce_51(val, _values, result)
-            # Handle '-An' like '-2n' or composite like '-2n+1' (when '+1' is part of IDENT)
-        result = Node.new(:an_plus_b, "-#{val[1]}#{val[2]}", @current_position)
-
-    result
-  end
-.,.,
-
-module_eval(<<'.,.,', 'parser.y', 222)
-  def _reduce_52(val, _values, result)
-            # Handle '-n+B' like '-n+3'
-        result = Node.new(:an_plus_b, "-#{val[1]}+#{val[3]}", @current_position)
-
-    result
-  end
-.,.,
-
-module_eval(<<'.,.,', 'parser.y', 227)
-  def _reduce_53(val, _values, result)
-            # Handle '-n-B' like '-n-2'
-        result = Node.new(:an_plus_b, "-#{val[1]}-#{val[3]}", @current_position)
-
-    result
-  end
-.,.,
-
-module_eval(<<'.,.,', 'parser.y', 232)
-  def _reduce_54(val, _values, result)
-            # Handle '-n' or composite like '-n+3' (when '+3' is part of IDENT)
-        result = Node.new(:an_plus_b, "-#{val[1]}", @current_position)
-
-    result
-  end
-.,.,
-
-module_eval(<<'.,.,', 'parser.y', 238)
-  def _reduce_55(val, _values, result)
-            # Handle just a number like '3'
-        result = Node.new(:an_plus_b, val[0].to_s, @current_position)
-
-    result
-  end
-.,.,
-
-module_eval(<<'.,.,', 'parser.y', 251)
+module_eval(<<'.,.,', 'parser.y', 286)
   def _reduce_56(val, _values, result)
+     result = val[0]
+    result
+  end
+.,.,
+
+module_eval(<<'.,.,', 'parser.y', 288)
+  def _reduce_57(val, _values, result)
+     result = Node.new(:argument, token_value(val[0]), token_position(val[0]), raw_value: token_raw(val[0]), quote: token_quote(val[0]))
+    result
+  end
+.,.,
+
+module_eval(<<'.,.,', 'parser.y', 290)
+  def _reduce_58(val, _values, result)
+     result = val[0]
+    result
+  end
+.,.,
+
+module_eval(<<'.,.,', 'parser.y', 292)
+  def _reduce_59(val, _values, result)
+     result = val[0]
+    result
+  end
+.,.,
+
+module_eval(<<'.,.,', 'parser.y', 298)
+  def _reduce_60(val, _values, result)
+            result = Node.new(:nth_selector_argument, nil, val[0].position)
+        result.add_child(val[0])
+        result.add_child(val[2])
+
+    result
+  end
+.,.,
+
+module_eval(<<'.,.,', 'parser.y', 308)
+  def _reduce_61(val, _values, result)
+            # Handle 'An+B' like '2n+1'
+        result = Node.new(:an_plus_b, "#{token_value(val[0])}#{token_value(val[1])}+#{token_value(val[3])}", token_position(val[0]))
+
+    result
+  end
+.,.,
+
+module_eval(<<'.,.,', 'parser.y', 313)
+  def _reduce_62(val, _values, result)
+            # Handle 'An-B' like '2n-1'
+        result = Node.new(:an_plus_b, "#{token_value(val[0])}#{token_value(val[1])}-#{token_value(val[3])}", token_position(val[0]))
+
+    result
+  end
+.,.,
+
+module_eval(<<'.,.,', 'parser.y', 318)
+  def _reduce_63(val, _values, result)
+            # Handle 'An' like '2n' or composite like '2n-1' (when '-1' is part of IDENT)
+        result = Node.new(:an_plus_b, "#{token_value(val[0])}#{token_value(val[1])}", token_position(val[0]))
+
+    result
+  end
+.,.,
+
+module_eval(<<'.,.,', 'parser.y', 323)
+  def _reduce_64(val, _values, result)
+            # Handle 'n+B' like 'n+5' or keywords followed by offset (rare but valid)
+        result = Node.new(:an_plus_b, "#{token_value(val[0])}+#{token_value(val[2])}", token_position(val[0]))
+
+    result
+  end
+.,.,
+
+module_eval(<<'.,.,', 'parser.y', 328)
+  def _reduce_65(val, _values, result)
+            # Handle 'n-B' like 'n-3'
+        result = Node.new(:an_plus_b, "#{token_value(val[0])}-#{token_value(val[2])}", token_position(val[0]))
+
+    result
+  end
+.,.,
+
+module_eval(<<'.,.,', 'parser.y', 334)
+  def _reduce_66(val, _values, result)
+            # Handle '-An+B' like '-2n+1'
+        result = Node.new(:an_plus_b, "-#{token_value(val[1])}#{token_value(val[2])}+#{token_value(val[4])}", token_position(val[0]))
+
+    result
+  end
+.,.,
+
+module_eval(<<'.,.,', 'parser.y', 339)
+  def _reduce_67(val, _values, result)
+            # Handle '-An-B' like '-2n-1'
+        result = Node.new(:an_plus_b, "-#{token_value(val[1])}#{token_value(val[2])}-#{token_value(val[4])}", token_position(val[0]))
+
+    result
+  end
+.,.,
+
+module_eval(<<'.,.,', 'parser.y', 344)
+  def _reduce_68(val, _values, result)
+            # Handle '-An' like '-2n' or composite like '-2n+1' (when '+1' is part of IDENT)
+        result = Node.new(:an_plus_b, "-#{token_value(val[1])}#{token_value(val[2])}", token_position(val[0]))
+
+    result
+  end
+.,.,
+
+module_eval(<<'.,.,', 'parser.y', 349)
+  def _reduce_69(val, _values, result)
+            # Handle '-n+B' like '-n+3'
+        result = Node.new(:an_plus_b, "-#{token_value(val[1])}+#{token_value(val[3])}", token_position(val[0]))
+
+    result
+  end
+.,.,
+
+module_eval(<<'.,.,', 'parser.y', 354)
+  def _reduce_70(val, _values, result)
+            # Handle '-n-B' like '-n-2'
+        result = Node.new(:an_plus_b, "-#{token_value(val[1])}-#{token_value(val[3])}", token_position(val[0]))
+
+    result
+  end
+.,.,
+
+module_eval(<<'.,.,', 'parser.y', 359)
+  def _reduce_71(val, _values, result)
+            # Handle '-n' or composite like '-n+3' (when '+3' is part of IDENT)
+        result = Node.new(:an_plus_b, "-#{token_value(val[1])}", token_position(val[0]))
+
+    result
+  end
+.,.,
+
+module_eval(<<'.,.,', 'parser.y', 365)
+  def _reduce_72(val, _values, result)
+            # Handle just a number like '3'
+        result = Node.new(:an_plus_b, token_value(val[0]).to_s, token_position(val[0]))
+
+    result
+  end
+.,.,
+
+module_eval(<<'.,.,', 'parser.y', 378)
+  def _reduce_73(val, _values, result)
     result = val
     result
   end
 .,.,
 
-module_eval(<<'.,.,', 'parser.y', 251)
-  def _reduce_57(val, _values, result)
+module_eval(<<'.,.,', 'parser.y', 378)
+  def _reduce_74(val, _values, result)
     result = val[1] ? val[1].unshift(val[0]) : val
     result
   end
 .,.,
 
-module_eval(<<'.,.,', 'parser.y', 251)
-  def _reduce_58(val, _values, result)
+module_eval(<<'.,.,', 'parser.y', 378)
+  def _reduce_75(val, _values, result)
     result = val[1] ? val[1].unshift(val[0]) : val
     result
   end
 .,.,
 
-module_eval(<<'.,.,', 'parser.y', 246)
-  def _reduce_59(val, _values, result)
+module_eval(<<'.,.,', 'parser.y', 373)
+  def _reduce_76(val, _values, result)
             result = Node.new(:selector_list, nil, @current_position)
         result.add_child(val[0])
         val[1].each { |pair| result.add_child(pair[1]) }
@@ -1586,15 +1985,15 @@ module_eval(<<'.,.,', 'parser.y', 246)
   end
 .,.,
 
-module_eval(<<'.,.,', 'parser.y', 254)
-  def _reduce_60(val, _values, result)
+module_eval(<<'.,.,', 'parser.y', 381)
+  def _reduce_77(val, _values, result)
      result = val[0]
     result
   end
 .,.,
 
-module_eval(<<'.,.,', 'parser.y', 257)
-  def _reduce_61(val, _values, result)
+module_eval(<<'.,.,', 'parser.y', 384)
+  def _reduce_78(val, _values, result)
             result = Node.new(:selector, nil, val[0].position)
         result.add_child(val[0])
         result.add_child(val[1])

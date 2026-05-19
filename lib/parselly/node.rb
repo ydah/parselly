@@ -2,36 +2,111 @@
 
 module Parselly
   # Represents a node in the Abstract Syntax Tree (AST) for CSS selectors.
-  #
-  # Each Node represents a parsed CSS selector component (e.g., type selector,
-  # class selector, combinator, or selector list) with its type, optional value,
-  # child nodes, parent reference, and source position.
-  #
-  # @example Creating a simple AST node
-  #   node = Parselly::Node.new(:type_selector, 'div', { line: 1, column: 1, offset: 0 })
-  #   node.add_child(Parselly::Node.new(:class_selector, 'container'))
-  #
-  # @example Traversing the AST
-  #   node.ancestors    # Returns array of ancestor nodes
-  #   node.descendants  # Returns array of all descendant nodes
-  #   node.siblings     # Returns array of sibling nodes
   class Node
-    attr_accessor :type, :value, :raw_value, :children, :parent, :position
+    include Enumerable
 
-    # Creates a new AST node.
-    #
-    # @param type [Symbol] the type of the node (e.g., :type_selector, :class_selector)
-    # @param value [String, nil] optional value associated with the node
-    # @param position [Hash] source position with :line, :column, and :offset keys
-    # @param line [Integer, nil] optional line number (keyword alternative)
-    # @param column [Integer, nil] optional column number (keyword alternative)
-    # @param offset [Integer, nil] optional offset (keyword alternative)
-    def initialize(type, value = nil, position = {}, raw_value: nil, line: nil, column: nil, offset: nil)
+    SIMPLE_SELECTOR_TYPES = Set[
+      :type_selector,
+      :universal_selector,
+      :id_selector,
+      :class_selector,
+      :attribute_selector,
+      :pseudo_class,
+      :pseudo_function,
+      :pseudo_element,
+      :pseudo_element_function
+    ].freeze
+
+    COMBINATOR_TYPES = {
+      child_combinator: '>',
+      adjacent_combinator: '+',
+      sibling_combinator: '~',
+      descendant_combinator: ' ',
+      column_combinator: '||'
+    }.freeze
+
+    SPECIFICITY_ZERO_PSEUDO_FUNCTIONS = Set['where'].freeze
+    SPECIFICITY_MAX_ARGUMENT_PSEUDO_FUNCTIONS = Set['is', 'not', 'has'].freeze
+    NTH_PSEUDO_FUNCTIONS = Set['nth-child', 'nth-last-child', 'nth-of-type', 'nth-last-of-type', 'nth-col', 'nth-last-col'].freeze
+
+    class ChildList < Array
+      def initialize(owner)
+        @owner = owner
+        super()
+      end
+
+      def <<(node)
+        return self if node.nil?
+
+        @owner.__send__(:adopt_child, node)
+        super(node)
+        @owner.__send__(:invalidate_cache)
+        self
+      end
+
+      def push(*nodes)
+        nodes.each { |node| self << node }
+        self
+      end
+
+      def concat(nodes)
+        nodes.each { |node| self << node }
+        self
+      end
+
+      def []=(index, node)
+        old_node = self[index]
+        @owner.__send__(:detach_child, old_node) if old_node
+        @owner.__send__(:adopt_child, node)
+        super
+        @owner.__send__(:invalidate_cache)
+        node
+      end
+
+      def insert(index, *nodes)
+        nodes.each { |node| @owner.__send__(:adopt_child, node) }
+        result = super
+        @owner.__send__(:invalidate_cache)
+        result
+      end
+
+      def delete_at(index)
+        node = super
+        @owner.__send__(:detach_child, node) if node
+        @owner.__send__(:invalidate_cache)
+        node
+      end
+
+      def delete(node)
+        deleted = super
+        @owner.__send__(:detach_child, deleted) if deleted
+        @owner.__send__(:invalidate_cache) if deleted
+        deleted
+      end
+
+      def clear
+        each { |node| @owner.__send__(:detach_child, node) }
+        result = super
+        @owner.__send__(:invalidate_cache)
+        result
+      end
+
+      private
+    end
+
+    attr_accessor :type, :value, :raw_value, :parent, :position, :namespace, :quote, :modifier
+    attr_reader :children
+
+    def initialize(type, value = nil, position = {}, raw_value: nil, line: nil, column: nil, offset: nil,
+                   namespace: nil, quote: nil, modifier: nil)
       @type = type
       @value = value
       @raw_value = raw_value.nil? ? value : raw_value
-      @children = []
+      @children = ChildList.new(self)
       @parent = nil
+      @namespace = namespace
+      @quote = quote
+      @modifier = modifier
       unless position.nil? || position.is_a?(Hash)
         raise ArgumentError, 'position must be a Hash'
       end
@@ -44,40 +119,57 @@ module Parselly
       @descendants_cache = nil
     end
 
-    # Adds a child node to this node.
-    #
-    # @param node [Node, nil] the child node to add
-    # @return [Node, nil] the added node, or nil if the input was nil
+    def children=(nodes)
+      @children.clear
+      Array(nodes).each { |node| add_child(node) }
+    end
+
     def add_child(node)
       return nil if node.nil?
 
-      node.parent = self
       @children << node
-      invalidate_cache
       node
     end
 
-    # Replaces a child node at the specified index.
-    #
-    # @param index [Integer] the index of the child to replace
-    # @param new_node [Node] the new child node
-    # @return [Node, nil] the new node, or nil if invalid parameters
     def replace_child(index, new_node)
       return nil if new_node.nil?
-      return nil if index < 0 || index >= @children.size
-
-      old_node = @children[index]
-      old_node.parent = nil if old_node
+      return nil if index.negative? || index >= @children.size
 
       @children[index] = new_node
-      new_node.parent = self
-      invalidate_cache
-      new_node
     end
 
-    # Returns an array of all ancestor nodes from parent to root.
-    #
-    # @return [Array<Node>] array of ancestor nodes
+    def insert_child(index, node)
+      return nil if node.nil?
+      return nil if index.negative? || index > @children.size
+
+      @children.insert(index, node)
+      node
+    end
+
+    def remove_child(node_or_index)
+      if node_or_index.is_a?(Integer)
+        return nil if node_or_index.negative? || node_or_index >= @children.size
+
+        return @children.delete_at(node_or_index)
+      end
+
+      @children.delete(node_or_index)
+    end
+
+    def insert_before(reference_child, new_child)
+      index = @children.index(reference_child)
+      return nil unless index
+
+      insert_child(index, new_child)
+    end
+
+    def insert_after(reference_child, new_child)
+      index = @children.index(reference_child)
+      return nil unless index
+
+      insert_child(index + 1, new_child)
+    end
+
     def ancestors
       result = []
       node = parent
@@ -88,25 +180,21 @@ module Parselly
       result
     end
 
-    # Returns an array of all descendant nodes (children, grandchildren, etc.).
-    #
-    # @return [Array<Node>] array of all descendant nodes
     def descendants
       return @descendants_cache if @descendants_cache
 
       @descendants_cache = []
-      queue = @children.dup
-      until queue.empty?
-        node = queue.shift
+      queue = @children.to_a
+      index = 0
+      while index < queue.length
+        node = queue[index]
         @descendants_cache << node
         queue.concat(node.children) unless node.children.empty?
+        index += 1
       end
       @descendants_cache
     end
 
-    # Depth-first traversal of this node and its descendants.
-    #
-    # @return [Enumerator, Node] enumerator if no block, otherwise self
     def each
       return enum_for(:each) unless block_given?
 
@@ -114,45 +202,29 @@ module Parselly
       until stack.empty?
         node = stack.pop
         yield node
-        children = node.children
-        stack.concat(children.reverse) if children && !children.empty?
+        stack.concat(node.children.reverse) unless node.children.empty?
       end
 
       self
     end
 
-    # Finds all nodes of a given type in this subtree.
-    #
-    # @param type [Symbol] the node type to match
-    # @return [Array<Node>] array of matching nodes
     def find_all(type)
-      each.with_object([]) { |node, acc| acc << node if node.type == type }
+      each.select { |node| node.type == type }
     end
 
-    # Returns an array of sibling nodes (excluding self).
-    #
-    # @return [Array<Node>] array of sibling nodes, or empty array if no parent
     def siblings
       return [] unless parent
 
       parent.children.reject { |child| child == self }
     end
 
-    # Returns a tree representation of this node and its descendants.
-    #
-    # @param indent [Integer] indentation level for the tree display
-    # @return [String] formatted tree string
     def to_tree(indent = 0)
       lines = []
       prefix = '  ' * indent
       pos_info = position.empty? ? '' : " [#{position[:line]}:#{position[:column]}]"
 
       lines << "#{prefix}#{type}#{"(#{value.inspect})" if value}#{pos_info}"
-
-      children.each do |child|
-        lines << child.to_tree(indent + 1)
-      end
-
+      children.each { |child| lines << child.to_tree(indent + 1) }
       lines.join("\n")
     end
 
@@ -160,33 +232,30 @@ module Parselly
       "#<#{self.class.name} type=#{type} value=#{value.inspect} children=#{children.size}>"
     end
 
-    # Converts the AST node back to a CSS selector string.
-    #
-    # @return [String] the CSS selector string representation of this node
-    def to_selector
+    def to_selector(mode: :normalized)
+      validate_selector_mode!(mode)
+
       case type
       when :selector_list
-        children.map(&:to_selector).join(', ')
-      when :selector
-        children.map(&:to_selector).join
-      when :simple_selector_sequence
-        children.map(&:to_selector).join
-      when :type_selector
-        value
-      when :universal_selector
-        value
+        children.map { |child| child.to_selector(mode: mode) }.join(', ')
+      when :selector, :simple_selector_sequence
+        children.map { |child| child.to_selector(mode: mode) }.join
+      when :type_selector, :universal_selector
+        selector_name(mode)
       when :id_selector
-        "##{value}"
+        "##{selector_identifier(mode)}"
       when :class_selector
-        ".#{value}"
+        ".#{selector_identifier(mode)}"
       when :attribute_selector
-        build_attribute_selector
+        build_attribute_selector(mode)
       when :pseudo_class
-        ":#{value}"
+        ":#{selector_identifier(mode)}"
       when :pseudo_element
-        "::#{value}"
+        "::#{selector_identifier(mode)}"
       when :pseudo_function
-        ":#{value}(#{children.map(&:to_selector).join})"
+        ":#{selector_identifier(mode)}(#{children.map { |child| child.to_selector(mode: mode) }.join})"
+      when :pseudo_element_function
+        "::#{selector_identifier(mode)}(#{children.map { |child| child.to_selector(mode: mode) }.join})"
       when :child_combinator
         ' > '
       when :adjacent_combinator
@@ -195,145 +264,196 @@ module Parselly
         ' ~ '
       when :descendant_combinator
         ' '
-      when :an_plus_b, :argument
-        value
-      when :attribute, :value
-        value
-      when :equal_operator, :includes_operator, :dashmatch_operator,
+      when :column_combinator
+        ' || '
+      when :nth_selector_argument
+        "#{children[0].to_selector(mode: mode)} of #{children[1].to_selector(mode: mode)}"
+      when :an_plus_b
+        value.to_s
+      when :argument
+        argument_selector(mode)
+      when :attribute, :value,
+           :equal_operator, :includes_operator, :dashmatch_operator,
            :prefixmatch_operator, :suffixmatch_operator, :substringmatch_operator
-        value
+        value.to_s
       else
-        children.map(&:to_selector).join
+        children.map { |child| child.to_selector(mode: mode) }.join
       end
     end
 
-    # Checks if this node or any descendant contains an ID selector.
-    #
-    # @return [Boolean] true if an ID selector is present
     def id?
-      return true if type == :id_selector
-      descendants.any? { |node| node.type == :id_selector }
+      any? { |node| node.type == :id_selector }
     end
 
-    # Extracts the ID value from this node or its descendants.
-    #
-    # @return [String, nil] the ID value without the '#' prefix, or nil if no ID selector is found
     def id
-      return value if type == :id_selector
-
-      descendants.each do |node|
-        return node.value if node.type == :id_selector
-      end
-      nil
+      ids.first
     end
 
-    # Extracts all class names from this node and its descendants.
-    #
-    # @return [Array<String>] array of class names without the '.' prefix
+    def ids
+      each.with_object([]) { |node, result| result << node.value if node.type == :id_selector }
+    end
+
     def classes
-      result = []
-      result << value if type == :class_selector
-      descendants.each do |node|
-        result << node.value if node.type == :class_selector
-      end
-      result
+      each.with_object([]) { |node, result| result << node.value if node.type == :class_selector }
     end
 
-    # Checks if this node or any descendant contains an attribute selector.
-    #
-    # @return [Boolean] true if an attribute selector is present
     def attribute?
-      return true if type == :attribute_selector
-      descendants.any? { |node| node.type == :attribute_selector }
+      any? { |node| node.type == :attribute_selector }
     end
 
-    # Extracts all attribute selectors from this node and its descendants.
-    #
-    # @return [Array<Hash>] array of attribute information hashes
-    #   Each hash contains :name, :operator (optional), and :value (optional) keys
     def attributes
-      result = []
-
-      if type == :attribute_selector
-        result << extract_attribute_info(self)
-      end
-
-      descendants.each do |node|
-        if node.type == :attribute_selector
-          result << extract_attribute_info(node)
-        end
-      end
-
-      result
+      attribute_selector_nodes.map { |node| extract_attribute_info(node) }
     end
 
-    # Extracts detailed attribute selector nodes from this node and its descendants.
-    #
-    # @return [Array<Hash>] array of attribute selector detail hashes
-    #   Each hash contains :name, :operator (optional), and :value (optional) keys
     def attribute_selectors
-      result = []
-
-      if type == :attribute_selector
-        result << extract_attribute_node(self)
-      end
-
-      descendants.each do |node|
-        result << extract_attribute_node(node) if node.type == :attribute_selector
-      end
-
-      result
+      attribute_selector_nodes.map { |node| extract_attribute_node(node) }
     end
 
-    # Extracts all pseudo-classes and pseudo-elements from this node and its descendants.
-    #
-    # @return [Array<String>] array of pseudo-class and pseudo-element names
     def pseudo_classes
-      result = []
-
-      if [:pseudo_class, :pseudo_element, :pseudo_function].include?(type)
-        result << value
-      end
-
-      descendants.each do |node|
-        if [:pseudo_class, :pseudo_element, :pseudo_function].include?(node.type)
+      each.with_object([]) do |node, result|
+        if [:pseudo_class, :pseudo_element, :pseudo_function, :pseudo_element_function].include?(node.type)
           result << node.value
         end
       end
-
-      result
     end
 
-    # Checks if this selector is a compound selector, as defined by CSS.
-    # A compound selector combines multiple simple selectors (type, class, id,
-    # attribute, pseudo-class) without combinators (e.g., `div.class#id[attr]:hover`).
-    # Returns true if more than one simple selector type is present.
-    #
-    # @return [Boolean] true if this node represents a compound selector
-    def compound_selector?
-      types = []
-
-      types << :id if id?
-      types << :class unless classes.empty?
-      types << :attribute if attribute?
-      types << :pseudo unless pseudo_classes.empty?
-      types << :type if type_selector?
-
-      types.size > 1
+    def pseudo_class_names
+      each.with_object([]) { |node, result| result << node.value if node.type == :pseudo_class }
     end
 
-    # Checks if this node or any descendant contains a type selector.
-    #
-    # @return [Boolean] true if a type selector is present
+    def pseudo_element_names
+      each.with_object([]) do |node, result|
+        result << node.value if [:pseudo_element, :pseudo_element_function].include?(node.type)
+      end
+    end
+
+    def pseudo_function_names
+      each.with_object([]) { |node, result| result << node.value if node.type == :pseudo_function }
+    end
+
     def type_selector?
-      return true if type == :type_selector
-      descendants.any? { |node| node.type == :type_selector }
+      any? { |node| node.type == :type_selector }
     end
+
+    def type_names
+      each.with_object([]) { |node, result| result << node.value if node.type == :type_selector }
+    end
+
+    def type_selectors
+      each.with_object([]) do |node, result|
+        next unless node.type == :type_selector
+
+        detail = { name: node.value, raw_name: node.raw_value, position: node.position }
+        detail[:namespace] = node.namespace unless node.namespace.nil?
+        result << detail
+      end
+    end
+
+    def combinators
+      each.with_object([]) do |node, result|
+        next unless COMBINATOR_TYPES.key?(node.type)
+
+        result << { type: node.type, value: node.value, position: node.position }
+      end
+    end
+
+    def selector_list?
+      type == :selector_list
+    end
+
+    def complex_selector?
+      type == :selector || any? { |node| COMBINATOR_TYPES.key?(node.type) }
+    end
+
+    def compound_selector?
+      case type
+      when :selector_list
+        children.size == 1 && children.first.compound_selector?
+      when :simple_selector_sequence
+        children.count { |child| SIMPLE_SELECTOR_TYPES.include?(child.type) } > 1
+      else
+        false
+      end
+    end
+
+    def specificity
+      case type
+      when :selector_list
+        children.map(&:specificity).max || [0, 0, 0]
+      when :selector, :simple_selector_sequence
+        children.reduce([0, 0, 0]) { |sum, child| add_specificity(sum, child.specificity) }
+      when :id_selector
+        [1, 0, 0]
+      when :class_selector, :attribute_selector, :pseudo_class
+        [0, 1, 0]
+      when :type_selector, :pseudo_element, :pseudo_element_function
+        [0, 0, 1]
+      when :pseudo_function
+        pseudo_function_specificity
+      else
+        [0, 0, 0]
+      end
+    end
+
+    def to_h
+      hash = {
+        type: type,
+        value: value,
+        raw_value: raw_value,
+        namespace: namespace,
+        quote: quote,
+        modifier: modifier,
+        position: position,
+        children: children.map(&:to_h)
+      }
+      hash.delete_if { |key, val| key != :children && (val.nil? || val == {}) }
+    end
+
+    def as_json(*)
+      to_h
+    end
+
+    def deconstruct_keys(keys)
+      hash = to_h
+      return hash if keys.nil?
+
+      keys.each_with_object({}) { |key, result| result[key] = hash[key] if hash.key?(key) }
+    end
+
+    def freeze_tree
+      children.each(&:freeze_tree)
+      children.freeze
+      freeze
+    end
+
+    def dup_tree
+      duplicate = self.class.new(
+        type,
+        value,
+        position.dup,
+        raw_value: raw_value,
+        namespace: namespace,
+        quote: quote,
+        modifier: modifier
+      )
+      children.each { |child| duplicate.add_child(child.dup_tree) }
+      duplicate
+    end
+    alias deep_dup dup_tree
 
     private
 
-    # Invalidates the descendants cache for this node and all ancestors.
-    # This ensures that cached descendants are cleared when the tree structure changes.
+    def adopt_child(node)
+      raise ArgumentError, 'child must be a Parselly::Node' unless node.is_a?(Node)
+
+      node.parent.remove_child(node) if node.parent && node.parent != self
+      node.parent = self
+    end
+
+    def detach_child(node)
+      node.parent = nil if node&.parent == self
+    end
+
     def invalidate_cache
       node = self
       while node
@@ -342,20 +462,18 @@ module Parselly
       end
     end
 
-    # Helper method to extract attribute information from an attribute_selector node.
-    #
-    # @param node [Node] an attribute_selector node
-    # @return [Hash] attribute information hash
+    def attribute_selector_nodes
+      each.select { |node| node.type == :attribute_selector }
+    end
+
     def extract_attribute_info(node)
       info = {}
 
-      # Simple attribute selector like [disabled]
       if node.value
         info[:name] = node.value
         return info
       end
 
-      # Attribute selector with operator and value like [type="text"]
       node.children.each do |child|
         case child.type
         when :attribute
@@ -368,47 +486,47 @@ module Parselly
         end
       end
 
+      info[:modifier] = node.modifier if node.modifier
       info
     end
 
-    # Helper method to extract detailed attribute selector data.
-    #
-    # @param node [Node] an attribute_selector node
-    # @return [Hash] attribute selector detail hash
     def extract_attribute_node(node)
       info = {}
 
       if node.value
         info[:name] = node.value
         info[:raw_name] = node.raw_value
+        info[:namespace] = node.namespace unless node.namespace.nil?
+        info[:position] = node.position unless node.position.empty?
         return info
       end
 
+      info[:modifier] = node.modifier if node.modifier
       node.children.each do |child|
         case child.type
         when :attribute
           info[:name] = child.value
           info[:raw_name] = child.raw_value
+          info[:namespace] = child.namespace unless child.namespace.nil?
+          info[:position] = child.position unless child.position.empty?
         when :equal_operator, :includes_operator, :dashmatch_operator,
              :prefixmatch_operator, :suffixmatch_operator, :substringmatch_operator
           info[:operator] = child.value
         when :value
           info[:value] = child.value
           info[:raw_value] = child.raw_value
+          info[:quote] = child.quote if child.quote
         end
       end
 
       info
     end
 
-    # Helper method to build an attribute selector string.
-    #
-    # @return [String] the attribute selector string
-    def build_attribute_selector
-      # Simple attribute selector like [disabled]
-      return "[#{value}]" if value
+    def build_attribute_selector(mode)
+      if value
+        return "[#{attribute_name_for(self, mode)}]"
+      end
 
-      # Attribute selector with operator and value like [type="text"]
       attr_name = nil
       operator = nil
       attr_value = nil
@@ -416,20 +534,107 @@ module Parselly
       children.each do |child|
         case child.type
         when :attribute
-          attr_name = child.value
+          attr_name = attribute_name_for(child, mode)
         when :equal_operator, :includes_operator, :dashmatch_operator,
              :prefixmatch_operator, :suffixmatch_operator, :substringmatch_operator
           operator = child.value
         when :value
-          attr_value = child.value
+          attr_value = attribute_value_for(child, mode)
         end
       end
 
-      if operator && attr_value
-        "[#{attr_name}#{operator}\"#{attr_value}\"]"
-      else
-        "[#{attr_name}]"
+      modifier_part = modifier ? " #{modifier}" : ''
+      operator && attr_value ? "[#{attr_name}#{operator}#{attr_value}#{modifier_part}]" : "[#{attr_name}]"
+    end
+
+    def attribute_name_for(node, mode)
+      return node.raw_value.to_s if mode == :preserve && node.raw_value
+
+      local = Parselly.sanitize(node.value.to_s)
+      return local if node.namespace.nil?
+
+      prefix = node.namespace == '*' ? '*' : Parselly.sanitize(node.namespace.to_s)
+      "#{prefix}|#{local}"
+    end
+
+    def attribute_value_for(node, mode)
+      if mode == :preserve
+        value = node.raw_value.to_s
+        return "#{node.quote}#{value}#{node.quote}" if node.quote
+
+        return value
       end
+
+      "\"#{escape_string(node.value.to_s)}\""
+    end
+
+    def selector_name(mode)
+      return raw_value.to_s if mode == :preserve && raw_value
+
+      local = value == '*' ? '*' : Parselly.sanitize(value.to_s)
+      return local if namespace.nil?
+
+      prefix = namespace == '*' ? '*' : Parselly.sanitize(namespace.to_s)
+      "#{prefix}|#{local}"
+    end
+
+    def selector_identifier(mode)
+      return raw_value.to_s if mode == :preserve && raw_value
+
+      Parselly.sanitize(value.to_s)
+    end
+
+    def argument_selector(mode)
+      if quote
+        value = mode == :preserve ? raw_value.to_s : escape_string(value.to_s)
+        return "#{quote}#{value}#{quote}"
+      end
+
+      mode == :preserve && raw_value ? raw_value.to_s : value.to_s
+    end
+
+    def escape_string(string)
+      string.each_char.with_object(+'') do |char, result|
+        case char
+        when '"', '\\'
+          result << "\\#{char}"
+        when "\n"
+          result << '\\a '
+        when "\r"
+          result << '\\d '
+        when "\f"
+          result << '\\c '
+        else
+          result << char
+        end
+      end
+    end
+
+    def validate_selector_mode!(mode)
+      return if [:normalized, :preserve].include?(mode)
+
+      raise ArgumentError, "unknown selector serialization mode: #{mode.inspect}"
+    end
+
+    def pseudo_function_specificity
+      return [0, 0, 0] if SPECIFICITY_ZERO_PSEUDO_FUNCTIONS.include?(value)
+
+      if SPECIFICITY_MAX_ARGUMENT_PSEUDO_FUNCTIONS.include?(value)
+        child = children.first
+        return child ? child.specificity : [0, 0, 0]
+      end
+
+      if NTH_PSEUDO_FUNCTIONS.include?(value)
+        nth_argument = children.first
+        selector_specificity = nth_argument&.type == :nth_selector_argument ? nth_argument.children[1].specificity : [0, 0, 0]
+        return add_specificity([0, 1, 0], selector_specificity)
+      end
+
+      [0, 1, 0]
+    end
+
+    def add_specificity(left, right)
+      [left[0] + right[0], left[1] + right[1], left[2] + right[2]]
     end
   end
 end

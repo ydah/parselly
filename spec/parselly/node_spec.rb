@@ -141,13 +141,27 @@ RSpec.describe Parselly::Node do
   describe '#attribute_selectors' do
     it 'extracts a simple attribute selector' do
       ast = parser.parse('[disabled]')
-      expect(ast.attribute_selectors).to eq([{ name: 'disabled', raw_name: 'disabled' }])
+      expect(ast.attribute_selectors).to eq([
+        {
+          name: 'disabled',
+          raw_name: 'disabled',
+          position: { line: 1, column: 1, offset: 0 }
+        }
+      ])
     end
 
     it 'extracts attribute selector with operator and value' do
       ast = parser.parse('[type="text"]')
       expect(ast.attribute_selectors).to eq([
-        { name: 'type', raw_name: 'type', operator: '=', value: 'text', raw_value: 'text' }
+        {
+          name: 'type',
+          raw_name: 'type',
+          position: { line: 1, column: 2, offset: 1 },
+          operator: '=',
+          value: 'text',
+          raw_value: 'text',
+          quote: '"'
+        }
       ])
     end
   end
@@ -181,6 +195,33 @@ RSpec.describe Parselly::Node do
     it 'returns empty array when no pseudo-classes are present' do
       ast = parser.parse('.myclass')
       expect(ast.pseudo_classes).to eq([])
+    end
+  end
+
+  describe 'selector extraction APIs' do
+    it 'extracts ids, pseudo names, type names, and combinators separately' do
+      ast = parser.parse('article#one#two.card:has(img)::before > svg|a')
+
+      expect(ast.ids).to eq(['one', 'two'])
+      expect(ast.pseudo_class_names).to eq([])
+      expect(ast.pseudo_function_names).to eq(['has'])
+      expect(ast.pseudo_element_names).to eq(['before'])
+      expect(ast.type_names).to eq(['article', 'img', 'a'])
+      expect(ast.combinators.map { |combinator| combinator[:type] }).to include(:child_combinator)
+    end
+
+    it 'calculates selector specificity' do
+      expect(parser.parse('#id.foo[attr]:hover').specificity).to eq([1, 3, 0])
+      expect(parser.parse(':where(#id.foo)').specificity).to eq([0, 0, 0])
+      expect(parser.parse(':is(.foo, #bar)').specificity).to eq([1, 0, 0])
+    end
+
+    it 'serializes to hashes and supports pattern matching keys' do
+      ast = parser.parse('.foo')
+
+      expect(ast.to_h).to include(type: :selector_list)
+      expect(ast.as_json).to eq(ast.to_h)
+      expect(ast.deconstruct_keys([:type])).to eq(type: :selector_list)
     end
   end
 
@@ -266,9 +307,9 @@ RSpec.describe Parselly::Node do
       expect(ast.compound_selector?).to be true
     end
 
-    it 'returns false for multiple classes' do
+    it 'returns true for multiple classes' do
       ast = parser.parse('.foo.bar')
-      expect(ast.compound_selector?).to be false
+      expect(ast.compound_selector?).to be true
     end
   end
 
@@ -539,6 +580,47 @@ RSpec.describe Parselly::Node do
 
         expect(result).to eq(new_child)
         expect(parent.children).to eq([new_child, child2])
+      end
+    end
+
+    describe 'mutation helpers' do
+      it 'keeps parent links and descendant cache valid for direct children mutation' do
+        parent = Parselly::Node.new(:selector_list)
+        child = Parselly::Node.new(:type_selector, 'div')
+
+        expect(parent.descendants).to eq([])
+        parent.children << child
+
+        expect(child.parent).to eq(parent)
+        expect(parent.descendants).to eq([child])
+      end
+
+      it 'supports insert and remove helpers' do
+        parent = Parselly::Node.new(:selector_list)
+        first = Parselly::Node.new(:type_selector, 'div')
+        second = Parselly::Node.new(:class_selector, 'foo')
+        third = Parselly::Node.new(:id_selector, 'bar')
+
+        parent.add_child(first)
+        parent.insert_after(first, third)
+        parent.insert_before(third, second)
+
+        expect(parent.children).to eq([first, second, third])
+        removed = parent.remove_child(second)
+        expect(removed.parent).to be_nil
+        expect(parent.children).to eq([first, third])
+      end
+
+      it 'duplicates and freezes trees' do
+        ast = parser.parse('div.foo')
+        duplicate = ast.deep_dup
+
+        expect(duplicate).not_to equal(ast)
+        expect(duplicate.to_selector).to eq(ast.to_selector)
+
+        ast.freeze_tree
+        expect(ast).to be_frozen
+        expect(ast.children).to be_frozen
       end
     end
 

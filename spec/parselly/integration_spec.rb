@@ -628,13 +628,8 @@ RSpec.describe 'CSS Selector Parser Integration' do
         expect(pseudo_elem.value).to eq('before')
       end
 
-      it 'parses pseudo function without leading colon' do
-        ast = parser.parse('not([disabled])')
-        pseudo_fn = find_node(ast, :pseudo_function)
-
-        expect(pseudo_fn).not_to be_nil
-        expect(pseudo_fn.type).to eq(:pseudo_function)
-        expect(pseudo_fn.value).to eq('not')
+      it 'rejects pseudo function without leading colon' do
+        expect { parser.parse('not([disabled])') }.to raise_error(Parselly::SyntaxError)
       end
 
       it 'creates simple_selector_sequence for compound selectors' do

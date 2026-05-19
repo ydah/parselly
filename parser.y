@@ -1,15 +1,15 @@
 class Parselly::Parser
   expect 0
   error_on_expect_mismatch
-  token IDENT STRING NUMBER
+  token IDENT STRING NUMBER OF
         HASH DOT STAR
         LBRACKET RBRACKET
         LPAREN RPAREN
         COLON COMMA
-        CHILD ADJACENT SIBLING DESCENDANT
+        CHILD ADJACENT SIBLING DESCENDANT COLUMN
         EQUAL INCLUDES DASHMATCH
         PREFIXMATCH SUFFIXMATCH SUBSTRINGMATCH
-        MINUS
+        MINUS PIPE
 
   # Precedence rules to resolve shift/reduce conflicts in an_plus_b grammar
   # These rules ensure that in patterns like "2n+1" or "n-3", the operators
@@ -50,13 +50,15 @@ rule
 
   combinator
     : CHILD
-      { result = Node.new(:child_combinator, '>', @current_position) }
+      { result = Node.new(:child_combinator, '>', token_position(val[0])) }
     | ADJACENT
-      { result = Node.new(:adjacent_combinator, '+', @current_position) }
+      { result = Node.new(:adjacent_combinator, '+', token_position(val[0])) }
     | SIBLING
-      { result = Node.new(:sibling_combinator, '~', @current_position) }
+      { result = Node.new(:sibling_combinator, '~', token_position(val[0])) }
     | DESCENDANT
-      { result = Node.new(:descendant_combinator, ' ', @current_position) }
+      { result = Node.new(:descendant_combinator, ' ', token_position(val[0])) }
+    | COLUMN
+      { result = Node.new(:column_combinator, '||', token_position(val[0])) }
     ;
 
   compound_selector
@@ -82,9 +84,69 @@ rule
 
   type_selector
     : IDENT
-      { result = Node.new(:type_selector, identifier_value(val[0]), @current_position, raw_value: identifier_raw(val[0])) }
+      { result = Node.new(:type_selector, token_value(val[0]), token_position(val[0]), raw_value: token_raw(val[0])) }
     | STAR
-      { result = Node.new(:universal_selector, '*', @current_position) }
+      { result = Node.new(:universal_selector, '*', token_position(val[0])) }
+    | IDENT PIPE IDENT
+      {
+        result = Node.new(
+          :type_selector,
+          token_value(val[2]),
+          token_position(val[0]),
+          raw_value: "#{token_raw(val[0])}|#{token_raw(val[2])}",
+          namespace: token_value(val[0])
+        )
+      }
+    | STAR PIPE IDENT
+      {
+        result = Node.new(
+          :type_selector,
+          token_value(val[2]),
+          token_position(val[0]),
+          raw_value: "*|#{token_raw(val[2])}",
+          namespace: '*'
+        )
+      }
+    | PIPE IDENT
+      {
+        result = Node.new(
+          :type_selector,
+          token_value(val[1]),
+          token_position(val[0]),
+          raw_value: "|#{token_raw(val[1])}",
+          namespace: ''
+        )
+      }
+    | IDENT PIPE STAR
+      {
+        result = Node.new(
+          :universal_selector,
+          '*',
+          token_position(val[0]),
+          raw_value: "#{token_raw(val[0])}|*",
+          namespace: token_value(val[0])
+        )
+      }
+    | STAR PIPE STAR
+      {
+        result = Node.new(
+          :universal_selector,
+          '*',
+          token_position(val[0]),
+          raw_value: '*|*',
+          namespace: '*'
+        )
+      }
+    | PIPE STAR
+      {
+        result = Node.new(
+          :universal_selector,
+          '*',
+          token_position(val[0]),
+          raw_value: '|*',
+          namespace: ''
+        )
+      }
     ;
 
   subclass_selector
@@ -102,77 +164,142 @@ rule
 
   id_selector
     : HASH IDENT
-      { result = Node.new(:id_selector, identifier_value(val[1]), @current_position, raw_value: identifier_raw(val[1])) }
+      { result = Node.new(:id_selector, token_value(val[1]), token_position(val[0]), raw_value: token_raw(val[1])) }
     ;
 
   class_selector
     : DOT IDENT
-      { result = Node.new(:class_selector, identifier_value(val[1]), @current_position, raw_value: identifier_raw(val[1])) }
+      { result = Node.new(:class_selector, token_value(val[1]), token_position(val[0]), raw_value: token_raw(val[1])) }
     ;
 
   attribute_selector
-    : LBRACKET IDENT RBRACKET
-      { result = Node.new(:attribute_selector, identifier_value(val[1]), @current_position, raw_value: identifier_raw(val[1])) }
-    | LBRACKET IDENT attr_matcher STRING RBRACKET
+    : LBRACKET attribute_name RBRACKET
       {
-        result = Node.new(:attribute_selector, nil, @current_position)
-        result.add_child(Node.new(:attribute, identifier_value(val[1]), @current_position, raw_value: identifier_raw(val[1])))
-        result.add_child(val[2])
-        result.add_child(Node.new(:value, val[3], @current_position))
+        result = Node.new(
+          :attribute_selector,
+          val[1].value,
+          token_position(val[0]),
+          raw_value: val[1].raw_value,
+          namespace: val[1].namespace
+        )
       }
-    | LBRACKET IDENT attr_matcher IDENT RBRACKET
+    | LBRACKET attribute_name attr_matcher attribute_value attr_modifier RBRACKET
       {
-        result = Node.new(:attribute_selector, nil, @current_position)
-        result.add_child(Node.new(:attribute, identifier_value(val[1]), @current_position, raw_value: identifier_raw(val[1])))
+        result = Node.new(:attribute_selector, nil, token_position(val[0]), modifier: val[4])
+        result.add_child(val[1])
         result.add_child(val[2])
-        result.add_child(Node.new(:value, identifier_value(val[3]), @current_position, raw_value: identifier_raw(val[3])))
+        result.add_child(val[3])
+      }
+    ;
+
+  attribute_name
+    : IDENT
+      {
+        result = Node.new(:attribute, token_value(val[0]), token_position(val[0]), raw_value: token_raw(val[0]))
+      }
+    | IDENT PIPE IDENT
+      {
+        result = Node.new(
+          :attribute,
+          token_value(val[2]),
+          token_position(val[0]),
+          raw_value: "#{token_raw(val[0])}|#{token_raw(val[2])}",
+          namespace: token_value(val[0])
+        )
+      }
+    | STAR PIPE IDENT
+      {
+        result = Node.new(
+          :attribute,
+          token_value(val[2]),
+          token_position(val[0]),
+          raw_value: "*|#{token_raw(val[2])}",
+          namespace: '*'
+        )
+      }
+    | PIPE IDENT
+      {
+        result = Node.new(
+          :attribute,
+          token_value(val[1]),
+          token_position(val[0]),
+          raw_value: "|#{token_raw(val[1])}",
+          namespace: ''
+        )
       }
     ;
 
   attr_matcher
     : EQUAL
-      { result = Node.new(:equal_operator, '=', @current_position) }
+      { result = Node.new(:equal_operator, '=', token_position(val[0])) }
     | INCLUDES
-      { result = Node.new(:includes_operator, '~=', @current_position) }
+      { result = Node.new(:includes_operator, '~=', token_position(val[0])) }
     | DASHMATCH
-      { result = Node.new(:dashmatch_operator, '|=', @current_position) }
+      { result = Node.new(:dashmatch_operator, '|=', token_position(val[0])) }
     | PREFIXMATCH
-      { result = Node.new(:prefixmatch_operator, '^=', @current_position) }
+      { result = Node.new(:prefixmatch_operator, '^=', token_position(val[0])) }
     | SUFFIXMATCH
-      { result = Node.new(:suffixmatch_operator, '$=', @current_position) }
+      { result = Node.new(:suffixmatch_operator, '$=', token_position(val[0])) }
     | SUBSTRINGMATCH
-      { result = Node.new(:substringmatch_operator, '*=', @current_position) }
+      { result = Node.new(:substringmatch_operator, '*=', token_position(val[0])) }
+    ;
+
+  attribute_value
+    : STRING
+      { result = Node.new(:value, token_value(val[0]), token_position(val[0]), raw_value: token_raw(val[0]), quote: token_quote(val[0])) }
+    | IDENT
+      { result = Node.new(:value, token_value(val[0]), token_position(val[0]), raw_value: token_raw(val[0])) }
+    | NUMBER
+      { result = Node.new(:value, token_value(val[0]), token_position(val[0]), raw_value: token_raw(val[0])) }
+    ;
+
+  attr_modifier
+    :
+      { result = nil }
+    | IDENT
+      { result = token_value(val[0]) }
     ;
 
   pseudo_class_selector
     : COLON IDENT
-      { result = Node.new(:pseudo_class, identifier_value(val[1]), @current_position, raw_value: identifier_raw(val[1])) }
+      { result = Node.new(:pseudo_class, token_value(val[1]), token_position(val[0]), raw_value: token_raw(val[1])) }
     | COLON IDENT LPAREN any_value RPAREN
       {
-        fn = Node.new(:pseudo_function, identifier_value(val[1]), @current_position, raw_value: identifier_raw(val[1]))
+        fn = Node.new(:pseudo_function, token_value(val[1]), token_position(val[0]), raw_value: token_raw(val[1]))
         fn.add_child(val[3])
-        result = fn
-      }
-    | IDENT LPAREN any_value RPAREN
-      {
-        fn = Node.new(:pseudo_function, identifier_value(val[0]), @current_position, raw_value: identifier_raw(val[0]))
-        fn.add_child(val[2])
         result = fn
       }
     ;
 
   pseudo_element_selector
     : COLON COLON IDENT
-      { result = Node.new(:pseudo_element, identifier_value(val[2]), @current_position, raw_value: identifier_raw(val[2])) }
+      { result = Node.new(:pseudo_element, token_value(val[2]), token_position(val[0]), raw_value: token_raw(val[2])) }
+    | COLON COLON IDENT LPAREN any_value RPAREN
+      {
+        fn = Node.new(:pseudo_element_function, token_value(val[2]), token_position(val[0]), raw_value: token_raw(val[2]))
+        fn.add_child(val[4])
+        result = fn
+      }
     ;
 
   any_value
-    : STRING
-      { result = Node.new(:argument, val[0], @current_position) }
+    : nth_of_value
+      { result = val[0] }
+    | STRING
+      { result = Node.new(:argument, token_value(val[0]), token_position(val[0]), raw_value: token_raw(val[0]), quote: token_quote(val[0])) }
     | an_plus_b
       { result = val[0] }
     | relative_selector_list
       { result = val[0] }
+    ;
+
+  nth_of_value
+    : an_plus_b OF relative_selector_list
+      {
+        result = Node.new(:nth_selector_argument, nil, val[0].position)
+        result.add_child(val[0])
+        result.add_child(val[2])
+      }
     ;
 
   an_plus_b
@@ -180,64 +307,64 @@ rule
     : NUMBER IDENT ADJACENT NUMBER
       {
         # Handle 'An+B' like '2n+1'
-        result = Node.new(:an_plus_b, "#{val[0]}#{val[1]}+#{val[3]}", @current_position)
+        result = Node.new(:an_plus_b, "#{token_value(val[0])}#{token_value(val[1])}+#{token_value(val[3])}", token_position(val[0]))
       }
     | NUMBER IDENT MINUS NUMBER
       {
         # Handle 'An-B' like '2n-1'
-        result = Node.new(:an_plus_b, "#{val[0]}#{val[1]}-#{val[3]}", @current_position)
+        result = Node.new(:an_plus_b, "#{token_value(val[0])}#{token_value(val[1])}-#{token_value(val[3])}", token_position(val[0]))
       }
     | NUMBER IDENT
       {
         # Handle 'An' like '2n' or composite like '2n-1' (when '-1' is part of IDENT)
-        result = Node.new(:an_plus_b, "#{val[0]}#{val[1]}", @current_position)
+        result = Node.new(:an_plus_b, "#{token_value(val[0])}#{token_value(val[1])}", token_position(val[0]))
       }
     | IDENT ADJACENT NUMBER
       {
         # Handle 'n+B' like 'n+5' or keywords followed by offset (rare but valid)
-        result = Node.new(:an_plus_b, "#{val[0]}+#{val[2]}", @current_position)
+        result = Node.new(:an_plus_b, "#{token_value(val[0])}+#{token_value(val[2])}", token_position(val[0]))
       }
     | IDENT MINUS NUMBER
       {
         # Handle 'n-B' like 'n-3'
-        result = Node.new(:an_plus_b, "#{val[0]}-#{val[2]}", @current_position)
+        result = Node.new(:an_plus_b, "#{token_value(val[0])}-#{token_value(val[2])}", token_position(val[0]))
       }
     # Negative coefficient cases
     | MINUS NUMBER IDENT ADJACENT NUMBER
       {
         # Handle '-An+B' like '-2n+1'
-        result = Node.new(:an_plus_b, "-#{val[1]}#{val[2]}+#{val[4]}", @current_position)
+        result = Node.new(:an_plus_b, "-#{token_value(val[1])}#{token_value(val[2])}+#{token_value(val[4])}", token_position(val[0]))
       }
     | MINUS NUMBER IDENT MINUS NUMBER
       {
         # Handle '-An-B' like '-2n-1'
-        result = Node.new(:an_plus_b, "-#{val[1]}#{val[2]}-#{val[4]}", @current_position)
+        result = Node.new(:an_plus_b, "-#{token_value(val[1])}#{token_value(val[2])}-#{token_value(val[4])}", token_position(val[0]))
       }
     | MINUS NUMBER IDENT
       {
         # Handle '-An' like '-2n' or composite like '-2n+1' (when '+1' is part of IDENT)
-        result = Node.new(:an_plus_b, "-#{val[1]}#{val[2]}", @current_position)
+        result = Node.new(:an_plus_b, "-#{token_value(val[1])}#{token_value(val[2])}", token_position(val[0]))
       }
     | MINUS IDENT ADJACENT NUMBER
       {
         # Handle '-n+B' like '-n+3'
-        result = Node.new(:an_plus_b, "-#{val[1]}+#{val[3]}", @current_position)
+        result = Node.new(:an_plus_b, "-#{token_value(val[1])}+#{token_value(val[3])}", token_position(val[0]))
       }
     | MINUS IDENT MINUS NUMBER
       {
         # Handle '-n-B' like '-n-2'
-        result = Node.new(:an_plus_b, "-#{val[1]}-#{val[3]}", @current_position)
+        result = Node.new(:an_plus_b, "-#{token_value(val[1])}-#{token_value(val[3])}", token_position(val[0]))
       }
     | MINUS IDENT
       {
         # Handle '-n' or composite like '-n+3' (when '+3' is part of IDENT)
-        result = Node.new(:an_plus_b, "-#{val[1]}", @current_position)
+        result = Node.new(:an_plus_b, "-#{token_value(val[1])}", token_position(val[0]))
       }
     # Simple cases
     | NUMBER
       {
         # Handle just a number like '3'
-        result = Node.new(:an_plus_b, val[0].to_s, @current_position)
+        result = Node.new(:an_plus_b, token_value(val[0]).to_s, token_position(val[0]))
       }
     ;
 
@@ -267,49 +394,100 @@ end
 require 'set'
 
 # Pre-computed sets for faster lookup
-CAN_END_COMPOUND = Set[:IDENT, :STAR, :RPAREN, :RBRACKET].freeze
+CAN_END_COMPOUND = Set[:IDENT, :STAR, :RPAREN, :RBRACKET, :NUMBER].freeze
 CAN_START_COMPOUND = Set[:IDENT, :STAR, :DOT, :HASH, :LBRACKET, :COLON].freeze
-TYPE_SELECTOR_TYPES = Set[:IDENT, :STAR].freeze
-SUBCLASS_SELECTOR_TYPES = Set[:DOT, :HASH, :LBRACKET, :COLON].freeze
-SUBCLASS_SELECTOR_END_TYPES = Set[:IDENT, :RBRACKET, :RPAREN].freeze
 NTH_PSEUDO_NAMES = Set['nth-child', 'nth-last-child', 'nth-of-type', 'nth-last-of-type', 'nth-col', 'nth-last-col'].freeze
 AN_PLUS_B_REGEX = /^(even|odd|[+-]?\d*n(?:[+-]\d+)?|[+-]?n(?:[+-]\d+)?|\d+)$/.freeze
+SELECTOR_LIST_PSEUDO_NAMES = Set['is', 'where', 'not', 'has'].freeze
 
 ---- inner
-def parse(input, tolerant: false)
+def parse(input, tolerant: false, max_length: nil, max_tokens: nil, max_depth: nil)
   @tolerant = tolerant
   @errors = []
   @error_index = nil
   @suppress_errors = false
+  @max_depth = max_depth
+
+  if max_length && input.length > max_length
+    error = parse_error("Input exceeds max_length #{max_length}", { line: 1, column: 1, offset: 0 })
+    return Parselly::ParseResult.new(nil, [error]) if tolerant
+
+    raise Parselly::ParseError, error
+  end
+
   @lexer = Parselly::Lexer.new(input)
   begin
     @tokens = @lexer.tokenize
-  rescue RuntimeError => e
+  rescue Parselly::ParseError, RuntimeError => e
     if tolerant
       @errors << parse_error_from_exception(e)
       return Parselly::ParseResult.new(nil, @errors)
     end
     raise
   end
+
+  if max_tokens && @tokens.size > max_tokens
+    error = parse_error("Input exceeds max_tokens #{max_tokens}", @tokens[max_tokens][2])
+    return Parselly::ParseResult.new(nil, [error]) if tolerant
+
+    raise Parselly::ParseError, error
+  end
+
   preprocess_tokens!
   @index = 0
   @current_position = { line: 1, column: 1, offset: 0 }
 
   if tolerant
     ast = parse_with_recovery
-    normalize_an_plus_b(ast) if ast
+    finalize_ast(ast) if ast
     return Parselly::ParseResult.new(ast, @errors)
   end
 
   ast = do_parse
-  normalize_an_plus_b(ast)
+  finalize_ast(ast)
   ast
 end
 
 def parse_with_recovery
   do_parse
 rescue Parselly::ParseError, RuntimeError
-  parse_partial_ast
+  parse_selector_list_recovery || parse_partial_ast
+end
+
+def parse_selector_list_recovery
+  return nil unless @tokens && @tokens.any? { |token| token[0] == :COMMA }
+
+  eof_token = @tokens.last if @tokens.last && @tokens.last[0] == false
+  body_tokens = eof_token ? @tokens[0...-1] : @tokens
+  segments = []
+  current = []
+
+  body_tokens.each do |token|
+    if token[0] == :COMMA
+      segments << current
+      current = []
+    else
+      current << token
+    end
+  end
+  segments << current
+
+  result = Node.new(:selector_list, nil, body_tokens.first&.[](2) || { line: 1, column: 1, offset: 0 })
+  recovered = false
+
+  segments.each do |segment|
+    next if segment.empty?
+
+    begin
+      parsed = parse_from_tokens(segment + [eof_token || [false, nil, segment.last[2]]], suppress_errors: true)
+      result.add_child(parsed)
+      recovered = true
+    rescue Parselly::ParseError, RuntimeError
+      next
+    end
+  end
+
+  recovered ? result : nil
 end
 
 def parse_partial_ast
@@ -343,6 +521,8 @@ ensure
 end
 
 def parse_error_from_exception(error)
+  return error.error if error.respond_to?(:error)
+
   line = nil
   column = nil
   offset = nil
@@ -356,16 +536,35 @@ def parse_error_from_exception(error)
   { message: error.message, line: line, column: column, offset: offset }
 end
 
-def identifier_value(token)
+def parse_error(message, position)
+  {
+    message: message,
+    line: position[:line],
+    column: position[:column],
+    offset: position[:offset]
+  }
+end
+
+def token_value(token)
   token.respond_to?(:value) ? token.value : token
 end
 
-def identifier_raw(token)
-  token.respond_to?(:raw) ? token.raw : token
+def token_raw(token)
+  token.respond_to?(:raw) ? token.raw : token_value(token)
+end
+
+def token_position(token)
+  token.respond_to?(:position) && token.position ? token.position : @current_position
+end
+
+def token_quote(token)
+  token.respond_to?(:quote) ? token.quote : nil
 end
 
 def preprocess_tokens!
   return if @tokens.size <= 1
+
+  mark_nth_of_tokens!
 
   new_tokens = Array.new(@tokens.size + (@tokens.size / 2)) # Pre-allocate with conservative estimate
   new_tokens_idx = 0
@@ -378,7 +577,7 @@ def preprocess_tokens!
     if i < last_idx
       next_token = @tokens[i + 1]
       if needs_descendant?(token, next_token)
-        pos = { line: token[2][:line], column: token[2][:column], offset: token[2][:offset] }
+        pos = next_token[2]
         new_tokens[new_tokens_idx] = [:DESCENDANT, ' ', pos]
         new_tokens_idx += 1
       end
@@ -388,23 +587,63 @@ def preprocess_tokens!
   @tokens = new_tokens.first(new_tokens_idx)
 end
 
-# Insert DESCENDANT combinator if:
-# - Current token can end a compound selector
-# - Next token can start a compound selector
-# - EXCEPT when current is type_selector and next is subclass_selector
-#   (they belong to the same compound selector)
+def mark_nth_of_tokens!
+  paren_depth = 0
+  last_idx = @tokens.size - 1
+
+  @tokens.each_with_index do |token, index|
+    case token[0]
+    when :LPAREN
+      paren_depth += 1
+    when :RPAREN
+      paren_depth -= 1 if paren_depth.positive?
+    when :IDENT
+      next unless paren_depth.positive?
+      next unless token_value(token[1]) == 'of'
+      next if index.zero? || index >= last_idx
+
+      previous_token = @tokens[index - 1]
+      next_token = @tokens[index + 1]
+      if token_gap?(previous_token, token) && token_gap?(token, next_token) &&
+         CAN_START_COMPOUND.include?(next_token[0])
+        token[0] = :OF
+      end
+    end
+  end
+end
+
+# Insert DESCENDANT combinator only when actual ignored input
+# (CSS whitespace or comments) separated two compound selector tokens.
 def needs_descendant?(current, next_tok)
   current_type = current[0]
   next_type = next_tok[0]
 
-  # Type selector followed by subclass selector = same compound
-  # Subclass selector followed by subclass selector = same compound
-  if SUBCLASS_SELECTOR_TYPES.include?(next_type)
-    return false if TYPE_SELECTOR_TYPES.include?(current_type) ||
-                    SUBCLASS_SELECTOR_END_TYPES.include?(current_type)
-  end
+  CAN_END_COMPOUND.include?(current_type) &&
+    CAN_START_COMPOUND.include?(next_type) &&
+    token_gap?(current, next_tok)
+end
 
-  CAN_END_COMPOUND.include?(current_type) && CAN_START_COMPOUND.include?(next_type)
+def token_gap?(current, next_tok)
+  current_end = current[2][:offset] + token_raw_length(current)
+  next_tok[2][:offset] > current_end
+end
+
+def token_raw_length(token)
+  token_type, token_value = token
+  value = token_value.respond_to?(:raw) ? token_value.raw : token_value.to_s
+
+  case token_type
+  when :STRING
+    value.bytesize + 2
+  else
+    value.bytesize
+  end
+end
+
+def finalize_ast(node)
+  normalize_an_plus_b(node)
+  validate_known_pseudo_functions!(node)
+  validate_max_depth!(node) if @max_depth
 end
 
 def normalize_an_plus_b(node)
@@ -420,6 +659,53 @@ def normalize_an_plus_b(node)
     end
   end
   node.children.compact.each { |child| normalize_an_plus_b(child) }
+end
+
+def validate_known_pseudo_functions!(node)
+  return unless node.respond_to?(:children) && node.children
+
+  if node.type == :pseudo_function
+    validate_nth_pseudo!(node) if NTH_PSEUDO_NAMES.include?(node.value)
+    validate_selector_list_pseudo!(node) if SELECTOR_LIST_PSEUDO_NAMES.include?(node.value)
+  end
+
+  node.children.compact.each { |child| validate_known_pseudo_functions!(child) }
+end
+
+def validate_nth_pseudo!(node)
+  child = node.children.first
+  return if child&.type == :an_plus_b
+  return if child&.type == :nth_selector_argument
+
+  raise Parselly::SyntaxError, parse_error(
+    "Parse error: invalid argument for :#{node.value}()",
+    child&.position || node.position
+  )
+end
+
+def validate_selector_list_pseudo!(node)
+  child = node.children.first
+  return if child&.type == :selector_list
+
+  raise Parselly::SyntaxError, parse_error(
+    "Parse error: invalid argument for :#{node.value}()",
+    child&.position || node.position
+  )
+end
+
+def validate_max_depth!(node)
+  stack = [[node, 1]]
+
+  until stack.empty?
+    current, depth = stack.pop
+    if depth > @max_depth
+      raise Parselly::ParseError, parse_error(
+        "Input exceeds max_depth #{@max_depth}",
+        current.position
+      )
+    end
+    current.children.each { |child| stack << [child, depth + 1] }
+  end
 end
 
 def extract_an_plus_b_value(selector_list_node)
@@ -442,22 +728,26 @@ def next_token
   @index += 1
   @current_position = token_position
 
-  [token_type, token_value]
+  [token_type, parser_token_value(token_value, token_position)]
+end
+
+def parser_token_value(value, position)
+  if value.respond_to?(:position)
+    value.position ||= position if value.respond_to?(:position=)
+    return value
+  end
+
+  Parselly::Lexer::TokenValue.new(value: value, raw: value, position: position)
 end
 
 def on_error(token_id, val, vstack)
   token_name = token_to_str(token_id) || '?'
   pos = @current_position || { line: '?', column: '?' }
-  error = {
-    message: "Parse error: unexpected #{token_name} '#{val}' at #{pos[:line]}:#{pos[:column]}",
-    line: pos[:line],
-    column: pos[:column],
-    offset: pos[:offset]
-  }
+  error = parse_error("Parse error: unexpected #{token_name} '#{token_value(val)}' at #{pos[:line]}:#{pos[:column]}", pos)
   if @tolerant
     @errors << error unless @suppress_errors
     @error_index ||= [@index - 1, 0].max
-    raise Parselly::ParseError, error
+    raise Parselly::SyntaxError, error
   end
-  raise error[:message]
+  raise Parselly::SyntaxError, error
 end

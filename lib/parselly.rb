@@ -1,14 +1,26 @@
 # frozen_string_literal: true
 
 require 'strscan'
-
-require_relative 'parselly/lexer'
-require_relative 'parselly/node'
-require_relative 'parselly/parser'
-require_relative 'parselly/version'
+require 'set'
 
 module Parselly
-  ParseResult = Struct.new(:ast, :errors)
+  ParseResult = Struct.new(:ast, :errors) do
+    def success?
+      errors.empty? && !ast.nil?
+    end
+
+    def failure?
+      !success?
+    end
+
+    def empty?
+      ast.nil?
+    end
+
+    def first_error
+      errors.first
+    end
+  end
 
   class ParseError < StandardError
     attr_reader :error
@@ -19,8 +31,18 @@ module Parselly
     end
   end
 
-  def parse(selector, tolerant: false)
-    Parser.new.parse(selector, tolerant: tolerant)
+  class LexError < ParseError; end
+  class SyntaxError < ParseError; end
+end
+
+require_relative 'parselly/lexer'
+require_relative 'parselly/node'
+require_relative 'parselly/parser'
+require_relative 'parselly/version'
+
+module Parselly
+  def parse(selector, **options)
+    Parser.new.parse(selector, **options)
   end
 
   def sanitize(selector)
@@ -42,8 +64,8 @@ module Parselly
       elsif scanner.pos.zero? && scanner.scan(/\d/)
         result << escaped_hex(scanner.matched)
       # Second character is a digit and first is `-`
-      elsif scanner.pos == 1 && scanner.scan(/\d/) &&
-            scanner.pre_match == '-'
+      elsif scanner.pos == 1 && scanner.peek(1).match?(/\d/) &&
+            scanner.string.start_with?('-') && scanner.scan(/\d/)
         result << escaped_hex(scanner.matched)
       # Alphanumeric characters, `-`, `_`
       elsif scanner.scan(/[a-zA-Z0-9\-_]/)

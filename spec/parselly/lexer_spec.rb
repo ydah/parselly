@@ -83,11 +83,10 @@ RSpec.describe Parselly::Lexer do
       it 'handles escaped characters' do
         lexer = Parselly::Lexer.new('"hello \"world\""')
         tokens = lexer.tokenize
-        # NOTE: Escape sequences inside strings are not processed.
-        # The raw string content is returned as-is after removing outer quotes.
-        # This test verifies the string is tokenized, but escapes remain unprocessed.
         expect(tokens[0][0]).to eq(:STRING)
-        expect(tokens[0][1]).to eq('hello \"world\"')
+        expect(tokens[0][1].value).to eq('hello "world"')
+        expect(tokens[0][1].raw).to eq('hello \"world\"')
+        expect(tokens[0][1].quote).to eq('"')
       end
     end
 
@@ -168,6 +167,19 @@ RSpec.describe Parselly::Lexer do
         lexer = Parselly::Lexer.new("div\n>\np")
         tokens = lexer.tokenize
         expect(tokens.map(&:first)).to eq([:IDENT, :CHILD, :IDENT, false])
+      end
+
+      it 'handles form feed as whitespace' do
+        lexer = Parselly::Lexer.new("div\f>\fp")
+        tokens = lexer.tokenize
+        expect(tokens.map(&:first)).to eq([:IDENT, :CHILD, :IDENT, false])
+      end
+
+      it 'handles comments as ignored input' do
+        lexer = Parselly::Lexer.new('div/* comment */.class')
+        tokens = lexer.tokenize
+        expect(tokens.map(&:first)).to eq([:IDENT, :DOT, :IDENT, false])
+        expect(tokens[1][2]).to include(line: 1, column: 17, offset: 16)
       end
     end
 
