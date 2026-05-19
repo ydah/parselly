@@ -679,20 +679,8 @@ def needs_descendant?(current, next_tok)
 end
 
 def token_gap?(current, next_tok)
-  current_end = current[2][:offset] + token_raw_length(current)
+  current_end = current[2][:end_offset] || current[2][:offset]
   next_tok[2][:offset] > current_end
-end
-
-def token_raw_length(token)
-  token_type, token_value = token
-  value = token_value.respond_to?(:raw) ? token_value.raw : token_value.to_s
-
-  case token_type
-  when :STRING
-    value.bytesize + 2
-  else
-    value.bytesize
-  end
 end
 
 def finalize_ast(node)

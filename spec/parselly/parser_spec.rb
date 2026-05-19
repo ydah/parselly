@@ -67,6 +67,7 @@ RSpec.describe Parselly::Parser do
       ast = parser.parse('.\\31 23.caf\\e9.日本語')
 
       expect(ast.classes).to eq(['123', 'café', '日本語'])
+      expect(find_all(ast, :descendant_combinator)).to be_empty
       expect(ast.to_selector(mode: :preserve)).to eq('.\\31 23.caf\\e9.日本語')
     end
 
