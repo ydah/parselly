@@ -99,6 +99,23 @@ RSpec.describe Parselly::Lexer do
         expect(tokens[0][1].raw).to eq('hello \"world\"')
         expect(tokens[0][1].quote).to eq('"')
       end
+
+      it 'consumes escaped newlines in strings' do
+        lexer = Parselly::Lexer.new("\"line\\\nbreak\"")
+        tokens = lexer.tokenize
+
+        expect(tokens[0][0]).to eq(:STRING)
+        expect(tokens[0][1].value).to eq('linebreak')
+        expect(tokens[0][1].raw).to eq("line\\\nbreak")
+        expect(tokens[0][2]).to include(start_line: 1, end_line: 2)
+      end
+
+      it 'decodes invalid escaped code points as replacement characters' do
+        lexer = Parselly::Lexer.new('"\\0 \\D800 \\110000 "')
+        tokens = lexer.tokenize
+
+        expect(tokens[0][1].value).to eq("\uFFFD\uFFFD\uFFFD")
+      end
     end
 
     context 'with numbers' do

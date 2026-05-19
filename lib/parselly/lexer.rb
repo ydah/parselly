@@ -113,8 +113,8 @@ module Parselly
     SINGLE_CHAR_OPERATOR_REGEX = /[|>+~\[\]():,.#*=-]/.freeze
     WHITESPACE_REGEX = /[ \t\n\r\f]+/.freeze
     COMMENT_REGEX = %r{/\*[^*]*\*+(?:[^/*][^*]*\*+)*/}.freeze
-    STRING_DOUBLE_REGEX = /"([^"\\]|\\.)*"/.freeze
-    STRING_SINGLE_REGEX = /'([^'\\]|\\.)*'/.freeze
+    STRING_DOUBLE_REGEX = /"([^"\\\n\r\f]|\\(?:\r\n|[\n\r\f]|[^\n\r\f]))*"/.freeze
+    STRING_SINGLE_REGEX = /'([^'\\\n\r\f]|\\(?:\r\n|[\n\r\f]|[^\n\r\f]))*'/.freeze
     ESCAPE_SEQUENCE = /\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f])/.freeze
     IDENTIFIER_REGEX = /
       (?:
@@ -126,6 +126,7 @@ module Parselly
     /x.freeze
     NUMBER_REGEX = /\d+(\.\d+)?/.freeze
     HEX_ESCAPE_REGEX = /\\([0-9a-fA-F]{1,6})([ \t\n\r\f])?/.freeze
+    ESCAPED_NEWLINE_REGEX = /\\(?:\r\n|[\n\r\f])/.freeze
     SIMPLE_ESCAPE_REGEX = /\\([^\n\r\f])/.freeze
     REPLACEMENT_CHARACTER = "\uFFFD"
 
@@ -279,6 +280,7 @@ module Parselly
 
     def unescape_css(value)
       value
+        .gsub(ESCAPED_NEWLINE_REGEX, '')
         .gsub(HEX_ESCAPE_REGEX) { decode_hex_escape(Regexp.last_match(1)) }
         .gsub(SIMPLE_ESCAPE_REGEX, '\1')
     end
