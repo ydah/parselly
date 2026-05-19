@@ -89,6 +89,26 @@ RSpec.describe Parselly::Parser do
       expect(argument.type).to eq(:nth_selector_argument)
       expect(argument.children.first.value).to eq('2n+1')
       expect(ast.to_selector).to eq(':nth-child(2n+1 of li.important)')
+
+      keyword = parser.parse(':nth-child(even of .item)')
+      keyword_argument = find_all(keyword, :pseudo_function).first.children.first
+      expect(keyword_argument.children.first.value).to eq('even')
+    end
+
+    it 'supports functional pseudo-elements and column combinators' do
+      pseudo_element = parser.parse('::slotted(.item)')
+      columns = parser.parse('col || td')
+
+      expect(find_all(pseudo_element, :pseudo_element_function).first.value).to eq('slotted')
+      expect(find_all(columns, :column_combinator).first.value).to eq('||')
+      expect(columns.to_selector).to eq('col || td')
+    end
+
+    it 'classifies legacy single-colon pseudo-elements' do
+      ast = parser.parse(':before')
+
+      expect(find_all(ast, :pseudo_element).first.value).to eq('before')
+      expect(ast.pseudo_element_names).to eq(['before'])
     end
 
     it 'rejects invalid known pseudo-function arguments' do

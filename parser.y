@@ -262,7 +262,11 @@ rule
 
   pseudo_class_selector
     : COLON IDENT
-      { result = Node.new(:pseudo_class, token_value(val[1]), token_position(val[0]), raw_value: token_raw(val[1])) }
+      {
+        name = token_value(val[1])
+        node_type = LEGACY_PSEUDO_ELEMENT_NAMES.include?(name) ? :pseudo_element : :pseudo_class
+        result = Node.new(node_type, name, token_position(val[0]), raw_value: token_raw(val[1]))
+      }
     | COLON IDENT LPAREN any_value RPAREN
       {
         fn = Node.new(:pseudo_function, token_value(val[1]), token_position(val[0]), raw_value: token_raw(val[1]))
@@ -294,11 +298,25 @@ rule
     ;
 
   nth_of_value
-    : an_plus_b OF relative_selector_list
+    : nth_of_an_plus_b OF relative_selector_list
       {
         result = Node.new(:nth_selector_argument, nil, val[0].position)
         result.add_child(val[0])
         result.add_child(val[2])
+      }
+    ;
+
+  nth_of_an_plus_b
+    : an_plus_b
+      { result = val[0] }
+    | IDENT
+      {
+        value = token_value(val[0])
+        unless value =~ AN_PLUS_B_REGEX
+          raise Parselly::SyntaxError, parse_error("Parse error: invalid An+B value '#{value}'", token_position(val[0]))
+        end
+
+        result = Node.new(:an_plus_b, value, token_position(val[0]), raw_value: token_raw(val[0]))
       }
     ;
 
@@ -399,6 +417,7 @@ CAN_START_COMPOUND = Set[:IDENT, :STAR, :DOT, :HASH, :LBRACKET, :COLON].freeze
 NTH_PSEUDO_NAMES = Set['nth-child', 'nth-last-child', 'nth-of-type', 'nth-last-of-type', 'nth-col', 'nth-last-col'].freeze
 AN_PLUS_B_REGEX = /^(even|odd|[+-]?\d*n(?:[+-]\d+)?|[+-]?n(?:[+-]\d+)?|\d+)$/.freeze
 SELECTOR_LIST_PSEUDO_NAMES = Set['is', 'where', 'not', 'has'].freeze
+LEGACY_PSEUDO_ELEMENT_NAMES = Set['before', 'after', 'first-line', 'first-letter'].freeze
 
 ---- inner
 def parse(input, tolerant: false, max_length: nil, max_tokens: nil, max_depth: nil)
