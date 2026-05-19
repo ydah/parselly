@@ -660,13 +660,14 @@ CAN_END_COMPOUND = Set[:IDENT, :STAR, :RPAREN, :RBRACKET, :NUMBER].freeze
 CAN_START_COMPOUND = Set[:IDENT, :STAR, :DOT, :HASH, :LBRACKET, :COLON].freeze
 NTH_PSEUDO_NAMES = Set['nth-child', 'nth-last-child', 'nth-of-type', 'nth-last-of-type', 'nth-col', 'nth-last-col'].freeze
 AN_PLUS_B_REGEX = /^(even|odd|[+-]?\d*n(?:[+-]\d+)?|[+-]?n(?:[+-]\d+)?|\d+)$/.freeze
-SELECTOR_LIST_PSEUDO_NAMES = Set['is', 'where', 'not', 'has'].freeze
+SELECTOR_LIST_PSEUDO_NAMES = Set['is', 'where', 'not'].freeze
+RELATIVE_SELECTOR_LIST_PSEUDO_NAMES = Set['has'].freeze
 LEGACY_PSEUDO_ELEMENT_NAMES = Set['before', 'after', 'first-line', 'first-letter'].freeze
 
 module Parselly
   class Parser < Racc::Parser
 
-module_eval(<<'...end parser.y/module_eval...', 'parser.y', 423)
+module_eval(<<'...end parser.y/module_eval...', 'parser.y', 424)
 def parse(input, tolerant: false, max_length: nil, max_tokens: nil, max_depth: nil, freeze: false)
   @tolerant = tolerant
   @errors = []
@@ -930,6 +931,7 @@ def validate_known_pseudo_functions!(node)
   if node.type == :pseudo_function
     validate_nth_pseudo!(node) if NTH_PSEUDO_NAMES.include?(node.value)
     validate_selector_list_pseudo!(node) if SELECTOR_LIST_PSEUDO_NAMES.include?(node.value)
+    validate_relative_selector_list_pseudo!(node) if RELATIVE_SELECTOR_LIST_PSEUDO_NAMES.include?(node.value)
   end
 
   node.children.compact.each { |child| validate_known_pseudo_functions!(child) }
@@ -948,12 +950,32 @@ end
 
 def validate_selector_list_pseudo!(node)
   child = node.children.first
+  return if child&.type == :selector_list && !relative_selector_list?(child)
+
+  raise Parselly::SyntaxError, parse_error(
+    "Parse error: invalid argument for :#{node.value}()",
+    child&.position || node.position
+  )
+end
+
+def validate_relative_selector_list_pseudo!(node)
+  child = node.children.first
   return if child&.type == :selector_list
 
   raise Parselly::SyntaxError, parse_error(
     "Parse error: invalid argument for :#{node.value}()",
     child&.position || node.position
   )
+end
+
+def relative_selector_list?(node)
+  node.type == :selector_list &&
+    node.children.any? { |child| relative_selector?(child) }
+end
+
+def relative_selector?(node)
+  node.type == :selector && node.children.first &&
+    node.children.first.type.to_s.end_with?('_combinator')
 end
 
 def validate_max_depth!(node)

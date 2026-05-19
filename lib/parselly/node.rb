@@ -239,7 +239,9 @@ module Parselly
       case type
       when :selector_list
         children.map { |child| child.to_selector(mode: mode) }.join(', ')
-      when :selector, :simple_selector_sequence
+      when :selector
+        build_selector(mode)
+      when :simple_selector_sequence
         children.map { |child| child.to_selector(mode: mode) }.join
       when :type_selector, :universal_selector
         selector_name(mode)
@@ -585,6 +587,12 @@ module Parselly
       return raw_value.to_s if mode == :preserve && raw_value
 
       Parselly.sanitize(value.to_s)
+    end
+
+    def build_selector(mode)
+      parts = children.map { |child| child.to_selector(mode: mode) }
+      parts[0] = parts[0].lstrip if children.first && COMBINATOR_TYPES.key?(children.first.type)
+      parts.join
     end
 
     def selector_prefix(mode, normalized_prefix)

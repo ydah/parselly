@@ -124,6 +124,21 @@ RSpec.describe Parselly::Parser do
       expect(ast.to_selector(mode: :preserve)).to eq(':before')
     end
 
+    it 'allows leading combinators only in relative selector-list pseudo-classes' do
+      has = parser.parse(':has(> .item, + .next)')
+
+      expect(has.to_selector).to eq(':has(> .item, + .next)')
+      expect { parser.parse(':is(> .item)') }.to raise_error(Parselly::SyntaxError)
+      expect { parser.parse(':where(> .item)') }.to raise_error(Parselly::SyntaxError)
+      expect { parser.parse(':not(> .item)') }.to raise_error(Parselly::SyntaxError)
+    end
+
+    it 'keeps unknown pseudo-function arguments forward-compatible' do
+      ast = parser.parse(':future(> .item)')
+
+      expect(ast.to_selector).to eq(':future(> .item)')
+    end
+
     it 'rejects invalid known pseudo-function arguments' do
       expect { parser.parse(':nth-child(foo)') }.to raise_error(Parselly::SyntaxError)
     end
@@ -241,6 +256,41 @@ RSpec.describe Parselly::Parser do
 
       selectors.each do |selector|
         expect { parser.parse(selector, tolerant: true) }.not_to raise_error
+      end
+    end
+  end
+
+  describe 'selector compatibility fixtures' do
+    it 'accepts representative selectors used by browser selector engines' do
+      selectors = [
+        'section article.card[data-state="ready"]:not(.disabled)',
+        ':is(h1, h2, h3)',
+        ':where(.dialog, [role="dialog"])',
+        'article:has(> h2, img.featured)',
+        ':nth-child(-n+3 of li.important)',
+        '[type="button" i]',
+        'svg|a[*|href]',
+        'col || td'
+      ]
+
+      selectors.each do |selector|
+        expect { parser.parse(selector) }.not_to raise_error, selector
+      end
+    end
+
+    it 'rejects selectors outside the accepted selector grammar' do
+      selectors = [
+        '> .item',
+        ':is(> .item)',
+        ':where(+ .item)',
+        ':not(~ .item)',
+        ':nth-child(2 of)',
+        '[attr==value]',
+        'div,'
+      ]
+
+      selectors.each do |selector|
+        expect { parser.parse(selector) }.to raise_error(Parselly::ParseError), selector
       end
     end
   end
