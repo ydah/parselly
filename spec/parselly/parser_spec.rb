@@ -43,11 +43,21 @@ RSpec.describe Parselly::Parser do
       value = find_all(ast, :value).first
 
       expect(attribute.position).to include(line: 1, column: 6, offset: 5)
+      expect(attribute.position).to include(start_offset: 5, end_offset: 6)
       expect(value.position).to include(line: 1, column: 12, offset: 11)
+      expect(value.position).to include(start_offset: 11, end_offset: 17)
     end
 
     it 'raises Parselly::SyntaxError in strict mode' do
       expect { parser.parse('div >') }.to raise_error(Parselly::SyntaxError)
+    end
+
+    it 'adds position ranges to parse errors when available' do
+      begin
+        parser.parse('div >')
+      rescue Parselly::SyntaxError => e
+        expect(e.error).to include(:end_line, :end_column, :end_offset)
+      end
     end
   end
 
@@ -124,6 +134,13 @@ RSpec.describe Parselly::Parser do
       expect(result.ast.to_selector).to eq('div, span')
       expect(result.first_error).to include(:message, :line, :column, :offset)
     end
+
+    it 'recovers from empty selector-list entries by keeping valid entries' do
+      result = parser.parse('div,, span,', tolerant: true)
+
+      expect(result.ast.to_selector).to eq('div, span')
+      expect(result.errors).not_to be_empty
+    end
   end
 
   describe 'resource limits' do
@@ -134,6 +151,94 @@ RSpec.describe Parselly::Parser do
 
     it 'supports max depth limits' do
       expect { parser.parse('div > span', max_depth: 2) }.to raise_error(Parselly::ParseError)
+    end
+  end
+
+  describe 'parse options' do
+    it 'can freeze parsed trees' do
+      ast = parser.parse('div.foo', freeze: true)
+
+      expect(ast).to be_frozen
+      expect(ast.children).to be_frozen
+    end
+  end
+
+  describe 'invalid selector fixtures' do
+    it 'rejects malformed selectors in strict mode' do
+      selectors = [
+        'div..foo',
+        '#',
+        '.',
+        '[attr=]',
+        '[=value]',
+        ':not()',
+        ':nth-child(foo)',
+        'div >',
+        ',div',
+        'div,',
+        'div,,span',
+        'div*'
+      ]
+
+      selectors.each do |selector|
+        expect { parser.parse(selector) }.to raise_error(Parselly::ParseError), selector
+      end
+    end
+  end
+
+  describe 'round trips' do
+    it 'keeps normalized serialization stable' do
+      selectors = [
+        'div.foo',
+        '.foo\\:bar:hover',
+        '[data-x="a\\"b"]',
+        ':is(.a, #b)',
+        ':nth-child(2n+1 of li.item)',
+        'svg|a[*|href]'
+      ]
+
+      selectors.each do |selector|
+        serialized = parser.parse(selector).to_selector
+        expect(parser.parse(serialized).to_selector).to eq(serialized)
+      end
+    end
+
+    it 'preserves raw selector spelling where raw values are retained' do
+      selectors = [
+        '.\\31 23',
+        '#\\31 id',
+        "[data-x='a\\'b']",
+        '[type="button" i]',
+        'svg|a[*|href]'
+      ]
+
+      selectors.each do |selector|
+        expect(parser.parse(selector).to_selector(mode: :preserve)).to eq(selector)
+      end
+    end
+  end
+
+  describe 'property-style smoke tests' do
+    it 'parses and serializes generated simple selector combinations' do
+      bases = %w[div span article]
+      classes = %w[.a .b .c]
+      pseudos = %w[:hover :focus]
+
+      bases.product(classes, pseudos).each do |base, klass, pseudo|
+        selector = "#{base}#{klass}#{pseudo}"
+        ast = parser.parse(selector)
+
+        expect(ast.to_selector).to eq(selector)
+        expect(parser.parse(ast.to_selector).to_selector).to eq(selector)
+      end
+    end
+
+    it 'keeps tolerant mode from leaking exceptions for malformed fixtures' do
+      selectors = ['div >', 'div,,span', '[=bad]', ':nth-child(foo)', 'div@class']
+
+      selectors.each do |selector|
+        expect { parser.parse(selector, tolerant: true) }.not_to raise_error
+      end
     end
   end
 end

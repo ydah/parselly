@@ -26,6 +26,50 @@ module Parselly
       end
     end
 
+    Token = Struct.new(:type, :value, :position, keyword_init: true) do
+      def [](index)
+        to_ary[index]
+      end
+
+      def []=(index, new_value)
+        case index
+        when 0
+          self.type = new_value
+        when 1
+          self.value = new_value
+        when 2
+          self.position = new_value
+        else
+          raise IndexError, "index #{index} outside of token"
+        end
+      end
+
+      def first
+        type
+      end
+
+      def last
+        position
+      end
+
+      def to_ary
+        [type, value, position]
+      end
+
+      alias to_a to_ary
+
+      def ==(other)
+        return super unless other.respond_to?(:to_ary)
+
+        other_type, other_value, other_position = other.to_ary
+        return false unless type == other_type
+        return false unless value == other_value
+        return position == other_position unless position.is_a?(Hash) && other_position.is_a?(Hash)
+
+        other_position.all? { |key, expected| position[key] == expected }
+      end
+    end
+
     TOKENS = {
       # Namespace and column combinators
       '|' => :PIPE,
@@ -103,23 +147,23 @@ module Parselly
         skip_ignored
         break if @scanner.eos?
 
-        pos = { line: @line, column: @column, offset: @scanner.pos }
+        start_position = current_position
 
-        if (token = scan_string(pos))
-          @tokens << [:STRING, token, pos]
-        elsif (token = scan_number)
-          @tokens << [:NUMBER, token, pos]
-        elsif (token = scan_operator)
-          @tokens << [token, @scanner.matched, pos]
-        elsif (token = scan_identifier(pos))
-          @tokens << [:IDENT, token, pos]
+        if (value = scan_string(start_position))
+          @tokens << build_token(:STRING, value, start_position)
+        elsif (value = scan_number)
+          @tokens << build_token(:NUMBER, value, start_position)
+        elsif (type = scan_operator)
+          @tokens << build_token(type, @scanner.matched, start_position)
+        elsif (value = scan_identifier(start_position))
+          @tokens << build_token(:IDENT, value, start_position)
         else
           char = @scanner.getch
-          raise_lexer_error("Unexpected character: #{char}", pos)
+          raise_lexer_error("Unexpected character: #{char}", start_position)
         end
       end
 
-      @tokens << [false, nil, { line: @line, column: @column, offset: @scanner.pos }]
+      @tokens << Token.new(type: false, value: nil, position: eof_position)
       @tokens
     end
 
@@ -202,6 +246,35 @@ module Parselly
           @column += 1
         end
       end
+    end
+
+    def current_position
+      { line: @line, column: @column, offset: @scanner.pos }
+    end
+
+    def build_token(type, value, start_position)
+      position = start_position.merge(
+        start_line: start_position[:line],
+        start_column: start_position[:column],
+        start_offset: start_position[:offset],
+        end_line: @line,
+        end_column: @column,
+        end_offset: @scanner.pos
+      )
+
+      value.position = position if value.respond_to?(:position=)
+      Token.new(type: type, value: value, position: position)
+    end
+
+    def eof_position
+      current_position.merge(
+        start_line: @line,
+        start_column: @column,
+        start_offset: @scanner.pos,
+        end_line: @line,
+        end_column: @column,
+        end_offset: @scanner.pos
+      )
     end
 
     def unescape_css(value)

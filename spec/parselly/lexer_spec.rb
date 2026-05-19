@@ -9,10 +9,21 @@ RSpec.describe Parselly::Lexer do
 
       it 'tokenizes element, class, and id' do
         tokens = lexer.tokenize
+        expect(tokens[0]).to be_a(Parselly::Lexer::Token)
         expect(tokens[0][0]).to eq(:IDENT)
         expect(tokens[0][1].value).to eq('div')
         expect(tokens[0][1].raw).to eq('div')
-        expect(tokens[0][2]).to include(line: 1, column: 1, offset: 0)
+        expect(tokens[0][2]).to include(
+          line: 1,
+          column: 1,
+          offset: 0,
+          start_line: 1,
+          start_column: 1,
+          start_offset: 0,
+          end_line: 1,
+          end_column: 4,
+          end_offset: 3
+        )
         expect(tokens[1]).to eq([:DOT, '.', { line: 1, column: 4, offset: 3 }])
         expect(tokens[2][0]).to eq(:IDENT)
         expect(tokens[2][1].value).to eq('class')
@@ -192,6 +203,11 @@ RSpec.describe Parselly::Lexer do
       it 'includes position in error message' do
         lexer = Parselly::Lexer.new('div & p')
         expect { lexer.tokenize }.to raise_error(/at 1:5/)
+      end
+
+      it 'raises lexer errors for invalid encodings' do
+        input = "\xFF".b.force_encoding(Encoding::UTF_8)
+        expect { Parselly::Lexer.new(input) }.to raise_error(Parselly::LexError)
       end
     end
   end

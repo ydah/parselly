@@ -141,28 +141,23 @@ RSpec.describe Parselly::Node do
   describe '#attribute_selectors' do
     it 'extracts a simple attribute selector' do
       ast = parser.parse('[disabled]')
-      expect(ast.attribute_selectors).to eq([
-        {
-          name: 'disabled',
-          raw_name: 'disabled',
-          position: { line: 1, column: 1, offset: 0 }
-        }
-      ])
+      selector = ast.attribute_selectors.first
+      expect(selector).to include(name: 'disabled', raw_name: 'disabled')
+      expect(selector[:position]).to include(line: 1, column: 1, offset: 0)
     end
 
     it 'extracts attribute selector with operator and value' do
       ast = parser.parse('[type="text"]')
-      expect(ast.attribute_selectors).to eq([
-        {
-          name: 'type',
-          raw_name: 'type',
-          position: { line: 1, column: 2, offset: 1 },
-          operator: '=',
-          value: 'text',
-          raw_value: 'text',
-          quote: '"'
-        }
-      ])
+      selector = ast.attribute_selectors.first
+      expect(selector).to include(
+        name: 'type',
+        raw_name: 'type',
+        operator: '=',
+        value: 'text',
+        raw_value: 'text',
+        quote: '"'
+      )
+      expect(selector[:position]).to include(line: 1, column: 2, offset: 1)
     end
   end
 

@@ -420,12 +420,13 @@ SELECTOR_LIST_PSEUDO_NAMES = Set['is', 'where', 'not', 'has'].freeze
 LEGACY_PSEUDO_ELEMENT_NAMES = Set['before', 'after', 'first-line', 'first-letter'].freeze
 
 ---- inner
-def parse(input, tolerant: false, max_length: nil, max_tokens: nil, max_depth: nil)
+def parse(input, tolerant: false, max_length: nil, max_tokens: nil, max_depth: nil, freeze: false)
   @tolerant = tolerant
   @errors = []
   @error_index = nil
   @suppress_errors = false
   @max_depth = max_depth
+  @freeze_tree = freeze
 
   if max_length && input.length > max_length
     error = parse_error("Input exceeds max_length #{max_length}", { line: 1, column: 1, offset: 0 })
@@ -458,12 +459,20 @@ def parse(input, tolerant: false, max_length: nil, max_tokens: nil, max_depth: n
 
   if tolerant
     ast = parse_with_recovery
-    finalize_ast(ast) if ast
+    if ast
+      begin
+        finalize_ast(ast)
+      rescue Parselly::ParseError => e
+        @errors << parse_error_from_exception(e)
+      end
+    end
+    ast.freeze_tree if ast && @freeze_tree
     return Parselly::ParseResult.new(ast, @errors)
   end
 
   ast = do_parse
   finalize_ast(ast)
+  ast.freeze_tree if @freeze_tree
   ast
 end
 
@@ -561,7 +570,11 @@ def parse_error(message, position)
     line: position[:line],
     column: position[:column],
     offset: position[:offset]
-  }
+  }.tap do |error|
+    error[:end_line] = position[:end_line] if position.key?(:end_line)
+    error[:end_column] = position[:end_column] if position.key?(:end_column)
+    error[:end_offset] = position[:end_offset] if position.key?(:end_offset)
+  end
 end
 
 def token_value(token)
